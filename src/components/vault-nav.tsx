@@ -21,11 +21,9 @@ export function VaultNav({ role, userEmail }: VaultNavProps) {
 
   const navLinks = [
     { href: "/vault/client-approval-queue", label: "Approval Queue" },
+    { href: "/vault/introductions", label: "Introductions" },
     ...(role === "admin"
-      ? [
-          { href: "/vault/introductions", label: "Introductions" },
-          { href: "/vault/settings", label: "Settings" },
-        ]
+      ? [{ href: "/vault/settings", label: "Settings" }]
       : []),
   ];
 

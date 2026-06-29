@@ -15,6 +15,7 @@ export type VaultItem = {
   accepted: "pending" | "Y" | "N";
   created_at: string;
   introduced_at: string | null;
+  gmail_thread_id: string | null;
 };
 
 export type Profile = {

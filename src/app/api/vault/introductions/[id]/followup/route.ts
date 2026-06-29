@@ -67,8 +67,8 @@ Ravi`;
       from: process.env.GMAIL_SENDER!,
       subject: subject.startsWith("Re:") ? subject : `Re: ${subject}`,
       body: followUpBody,
-      inReplyTo: messageId,
-      references: messageId,
+      inReplyTo: messageId ?? undefined,
+      references: messageId ?? undefined,
     });
 
     await gmail.users.messages.send({

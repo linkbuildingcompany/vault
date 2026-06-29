@@ -5,7 +5,6 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// Server-side client (same for now — no auth needed)
 export function createServerClient() {
   return createClient(supabaseUrl, supabaseAnonKey);
 }
@@ -15,4 +14,10 @@ export type VaultItem = {
   website_url: string;
   accepted: "pending" | "Y" | "N";
   created_at: string;
+  introduced_at: string | null;
+};
+
+export type Profile = {
+  id: string;
+  role: "admin" | "viewer";
 };

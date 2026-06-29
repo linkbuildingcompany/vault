@@ -1,10 +1,10 @@
 // src/app/api/vault/introductions/[id]/send/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
-import { getGmailClient, buildEmail, encodeMessage } from "@/lib/gmail";
+import { getGmailClient, buildEmailWithAttachments, encodeMessage } from "@/lib/gmail";
 
-const TO_EMAIL = "betty.soare@fatjoe.com";
-const CC_EMAIL = "jayson.sallatic@fatjoe.com";
+// FatJoe team always CC'd
+const CC_EMAILS = "betty.soare@fatjoe.com, jayson.sallatic@fatjoe.com";
 
 export async function POST(
   req: NextRequest,
@@ -13,12 +13,23 @@ export async function POST(
   const supabase = createServerClient();
   const id = Number(params.id);
 
-  // Accept custom subject/body from the compose modal
   const reqBody = await req.json().catch(() => ({}));
-  const customSubject: string | undefined = reqBody.subject;
-  const customBody: string | undefined = reqBody.body;
+  const {
+    to,          // partner site email — required
+    subject,
+    body,
+    attachments, // Array<{ filename: string; mimeType: string; data: string /* base64 */ }>
+  } = reqBody as {
+    to?: string;
+    subject?: string;
+    body?: string;
+    attachments?: Array<{ filename: string; mimeType: string; data: string }>;
+  };
 
-  // Fetch the vault item
+  if (!to) {
+    return NextResponse.json({ error: "Partner email (to) is required" }, { status: 400 });
+  }
+
   const { data: item, error } = await supabase
     .from("vault_items")
     .select("*")
@@ -34,25 +45,20 @@ export async function POST(
   }
 
   const domain = item.website_url;
-
-  const subject = customSubject ?? `Introduction: ${domain}`;
-  const body = customBody ?? `Hi Betty,
-
-I wanted to introduce you to ${domain} — they have a great audience and I think they'd be a fantastic fit for a collaboration.
-
-Please let me know if you'd like to connect!
-
-Best regards,
-Ravi`;
+  const emailSubject = subject ?? `Introduction: ${domain}`;
+  const emailBody =
+    body ??
+    `Hi,\n\nI wanted to reach out about ${domain}. We'd love to explore a collaboration opportunity with you.\n\nPlease let me know if you're interested!\n\nBest regards,\nRavi`;
 
   try {
     const gmail = getGmailClient();
-    const rawEmail = buildEmail({
-      to: TO_EMAIL,
-      cc: CC_EMAIL,
+    const rawEmail = buildEmailWithAttachments({
+      to,
+      cc: CC_EMAILS,
       from: process.env.GMAIL_SENDER!,
-      subject,
-      body,
+      subject: emailSubject,
+      body: emailBody,
+      attachments: attachments ?? [],
     });
 
     const res = await gmail.users.messages.send({
@@ -62,12 +68,12 @@ Ravi`;
 
     const threadId = res.data.threadId!;
 
-    // Store thread ID and mark as introduced
     await supabase
       .from("vault_items")
       .update({
         gmail_thread_id: threadId,
         introduced_at: new Date().toISOString(),
+        partner_email: to,
       })
       .eq("id", id);
 

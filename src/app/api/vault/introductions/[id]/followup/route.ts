@@ -1,10 +1,9 @@
 // src/app/api/vault/introductions/[id]/followup/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
-import { getGmailClient, buildEmail, encodeMessage } from "@/lib/gmail";
+import { getGmailClient, buildEmailWithAttachments, encodeMessage } from "@/lib/gmail";
 
-const TO_EMAIL = "betty.soare@fatjoe.com";
-const CC_EMAIL = "jayson.sallatic@fatjoe.com";
+const CC_EMAILS = "betty.soare@fatjoe.com, jayson.sallatic@fatjoe.com";
 
 export async function POST(
   req: NextRequest,
@@ -12,8 +11,15 @@ export async function POST(
 ) {
   const supabase = createServerClient();
   const id = Number(params.id);
-  const body = await req.json().catch(() => ({}));
-  const customMessage: string | undefined = body.message;
+
+  const reqBody = await req.json().catch(() => ({}));
+  const {
+    message,
+    attachments,
+  } = reqBody as {
+    message?: string;
+    attachments?: Array<{ filename: string; mimeType: string; data: string }>;
+  };
 
   const { data: item, error } = await supabase
     .from("vault_items")
@@ -26,16 +32,16 @@ export async function POST(
   }
 
   if (!item.gmail_thread_id) {
-    return NextResponse.json(
-      { error: "No intro sent yet — send intro first" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "No intro sent yet — send intro first" }, { status: 400 });
+  }
+
+  if (!item.partner_email) {
+    return NextResponse.json({ error: "No partner email on record" }, { status: 400 });
   }
 
   try {
     const gmail = getGmailClient();
 
-    // Get the first message in the thread to get the Message-ID for In-Reply-To
     const thread = await gmail.users.threads.get({
       userId: "me",
       id: item.gmail_thread_id,
@@ -44,31 +50,29 @@ export async function POST(
     });
 
     const firstMsg = thread.data.messages?.[0];
-    const headers = firstMsg?.payload?.headers || [];
-    const messageId = headers.find(
-      (h) => h.name?.toLowerCase() === "message-id"
-    )?.value;
-    const subject = headers.find(
-      (h) => h.name?.toLowerCase() === "subject"
-    )?.value ?? `Introduction: ${item.website_url}`;
+    const headers = firstMsg?.payload?.headers ?? [];
+    const messageId = headers.find((h) => h.name?.toLowerCase() === "message-id")?.value;
+    const originalSubject =
+      headers.find((h) => h.name?.toLowerCase() === "subject")?.value ??
+      `Introduction: ${item.website_url}`;
 
-    const followUpBody = customMessage
-      ? customMessage
-      : `Hi Betty,
+    const followUpBody =
+      message ??
+      `Hi,\n\nJust following up on my previous email about ${item.website_url}. Would love to connect and explore collaboration possibilities!\n\nBest regards,\nRavi`;
 
-Just following up on the introduction I sent for ${item.website_url}. Please let me know if you have any questions or would like more information!
+    const replySubject = originalSubject.startsWith("Re:")
+      ? originalSubject
+      : `Re: ${originalSubject}`;
 
-Best regards,
-Ravi`;
-
-    const rawEmail = buildEmail({
-      to: TO_EMAIL,
-      cc: CC_EMAIL,
+    const rawEmail = buildEmailWithAttachments({
+      to: item.partner_email,
+      cc: CC_EMAILS,
       from: process.env.GMAIL_SENDER!,
-      subject: subject.startsWith("Re:") ? subject : `Re: ${subject}`,
+      subject: replySubject,
       body: followUpBody,
       inReplyTo: messageId ?? undefined,
       references: messageId ?? undefined,
+      attachments: attachments ?? [],
     });
 
     await gmail.users.messages.send({

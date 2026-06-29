@@ -7,11 +7,16 @@ const TO_EMAIL = "betty.soare@fatjoe.com";
 const CC_EMAIL = "jayson.sallatic@fatjoe.com";
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { id: string } }
 ) {
   const supabase = createServerClient();
   const id = Number(params.id);
+
+  // Accept custom subject/body from the compose modal
+  const reqBody = await req.json().catch(() => ({}));
+  const customSubject: string | undefined = reqBody.subject;
+  const customBody: string | undefined = reqBody.body;
 
   // Fetch the vault item
   const { data: item, error } = await supabase
@@ -29,8 +34,9 @@ export async function POST(
   }
 
   const domain = item.website_url;
-  const subject = `Introduction: ${domain}`;
-  const body = `Hi Betty,
+
+  const subject = customSubject ?? `Introduction: ${domain}`;
+  const body = customBody ?? `Hi Betty,
 
 I wanted to introduce you to ${domain} — they have a great audience and I think they'd be a fantastic fit for a collaboration.
 

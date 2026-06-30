@@ -22,6 +22,7 @@ export function VaultNav({ role, userEmail }: VaultNavProps) {
 
   const navLinks = [
     { href: "/vault/website-review", label: "Website Review" },
+    { href: "/vault/communications", label: "Communications" },
     { href: "/vault/introductions", label: "Introductions" },
     ...(role === "admin"
       ? [{ href: "/vault/settings", label: "Settings" }]

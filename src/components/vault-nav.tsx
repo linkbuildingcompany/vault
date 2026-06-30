@@ -1,3 +1,4 @@
+// src/components/vault-nav.tsx
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -20,7 +21,6 @@ export function VaultNav({ role, userEmail }: VaultNavProps) {
   }
 
   const navLinks = [
-    { href: "/vault/client-approval-queue", label: "Approval Queue" },
     { href: "/vault/introductions", label: "Introductions" },
     ...(role === "admin"
       ? [{ href: "/vault/settings", label: "Settings" }]

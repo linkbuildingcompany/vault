@@ -11,6 +11,7 @@ export async function GET(req: NextRequest) {
   const search = searchParams.get("search") || "";
   const reviewStatus = searchParams.get("reviewStatus") || "";
   const systemStatus = searchParams.get("systemStatus") || "";
+  const month = searchParams.get("month") || ""; // "YYYY-MM"
   const sort = searchParams.get("sort") || "newest";
   const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
   const limit = Math.min(100, parseInt(searchParams.get("limit") || String(PAGE_SIZE)));
@@ -24,6 +25,13 @@ export async function GET(req: NextRequest) {
   if (search) query = query.ilike("domain", `%${search}%`);
   if (reviewStatus) query = query.eq("review_status", reviewStatus);
   if (systemStatus) query = query.eq("system_status", systemStatus);
+  if (month) {
+    const [y, m] = month.split("-").map(Number);
+    const start = `${month}-01`;
+    const nextMonth = new Date(y, m, 1); // JS months are 0-indexed, so m (1-indexed) = next month
+    const end = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, "0")}-01`;
+    query = query.gte("date_added", start).lt("date_added", end);
+  }
 
   query = query
     .order("date_added", { ascending: sort === "oldest" })

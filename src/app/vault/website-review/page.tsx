@@ -107,6 +107,7 @@ export default function WebsiteReviewPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filterReviewStatus, setFilterReviewStatus] = useState("");
   const [filterSystemStatus, setFilterSystemStatus] = useState("");
+  const [filterMonth, setFilterMonth] = useState("");
   const [sort, setSort] = useState<"newest" | "oldest">("newest");
   const [page, setPage] = useState(1);
 
@@ -171,7 +172,7 @@ export default function WebsiteReviewPage() {
   // Reset page on filter change
   useEffect(() => {
     setPage(1);
-  }, [filterReviewStatus, filterSystemStatus, sort]);
+  }, [filterReviewStatus, filterSystemStatus, filterMonth, sort]);
 
   // ── Fetch ────────────────────────────────────────────────────────────────
 
@@ -182,6 +183,7 @@ export default function WebsiteReviewPage() {
         search: debouncedSearch,
         reviewStatus: filterReviewStatus,
         systemStatus: filterSystemStatus,
+        month: filterMonth,
         sort,
         page: String(page),
         limit: String(PAGE_SIZE),
@@ -196,7 +198,7 @@ export default function WebsiteReviewPage() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, filterReviewStatus, filterSystemStatus, sort, page]);
+  }, [debouncedSearch, filterReviewStatus, filterSystemStatus, filterMonth, sort, page]);
 
   useEffect(() => {
     if (!authLoading) fetchData();
@@ -399,6 +401,19 @@ export default function WebsiteReviewPage() {
 
   // ── Formatters ───────────────────────────────────────────────────────────
 
+  // Generate last 24 months as options for month filter
+  const monthOptions = (() => {
+    const options: { value: string; label: string }[] = [];
+    const now = new Date();
+    for (let i = 0; i < 24; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const label = d.toLocaleDateString("en-GB", { month: "short", year: "numeric" });
+      options.push({ value, label });
+    }
+    return options;
+  })();
+
   const fmtDate = (d: string) => {
     if (!d) return "—";
     return new Date(d).toLocaleDateString("en-GB", {
@@ -540,6 +555,18 @@ export default function WebsiteReviewPage() {
           ))}
         </select>
         <select
+          value={filterMonth}
+          onChange={(e) => setFilterMonth(e.target.value)}
+          className="text-sm border rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900/20"
+        >
+          <option value="">All Months</option>
+          {monthOptions.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <select
           value={sort}
           onChange={(e) => setSort(e.target.value as "newest" | "oldest")}
           className="text-sm border rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900/20"
@@ -547,12 +574,13 @@ export default function WebsiteReviewPage() {
           <option value="newest">Newest First</option>
           <option value="oldest">Oldest First</option>
         </select>
-        {(filterReviewStatus || filterSystemStatus || debouncedSearch) && (
+        {(filterReviewStatus || filterSystemStatus || filterMonth || debouncedSearch) && (
           <button
             onClick={() => {
               setSearch("");
               setFilterReviewStatus("");
               setFilterSystemStatus("");
+              setFilterMonth("");
             }}
             className="text-xs text-gray-500 hover:text-gray-900 flex items-center gap-1"
           >
@@ -710,7 +738,7 @@ export default function WebsiteReviewPage() {
                     <Globe className="h-10 w-10 mx-auto mb-3 text-gray-200" />
                     <p className="font-medium">No domains found</p>
                     <p className="text-xs mt-1">
-                      {debouncedSearch || filterReviewStatus || filterSystemStatus
+                      {debouncedSearch || filterReviewStatus || filterSystemStatus || filterMonth
                         ? "Try adjusting your filters"
                         : "Click \"Add Domain\" to get started"}
                     </p>

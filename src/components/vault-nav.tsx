@@ -21,7 +21,7 @@ export function VaultNav({ role, userEmail }: VaultNavProps) {
   }
 
   const navLinks = [
-    { href: "/vault/client-approval-queue", label: "Pipeline" },
+    { href: "/vault/website-review", label: "Website Review" },
     { href: "/vault/introductions", label: "Introductions" },
     ...(role === "admin"
       ? [{ href: "/vault/settings", label: "Settings" }]
@@ -30,7 +30,7 @@ export function VaultNav({ role, userEmail }: VaultNavProps) {
 
   return (
     <header className="border-b bg-white px-6 py-4">
-      <div className="flex items-center justify-between max-w-6xl mx-auto">
+      <div className="flex items-center justify-between max-w-7xl mx-auto">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-900">

@@ -1,0 +1,109 @@
+// src/app/api/vault/reviews/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import { createServerClient } from "@/lib/supabase";
+
+const PAGE_SIZE = 25;
+
+export async function GET(req: NextRequest) {
+  const supabase = createServerClient();
+  const { searchParams } = req.nextUrl;
+
+  const search = searchParams.get("search") || "";
+  const reviewStatus = searchParams.get("reviewStatus") || "";
+  const systemStatus = searchParams.get("systemStatus") || "";
+  const sort = searchParams.get("sort") || "newest";
+  const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
+  const limit = Math.min(100, parseInt(searchParams.get("limit") || String(PAGE_SIZE)));
+  const offset = (page - 1) * limit;
+
+  // Main query (filtered + paginated)
+  let query = supabase
+    .from("website_reviews")
+    .select("*", { count: "exact" });
+
+  if (search) query = query.ilike("domain", `%${search}%`);
+  if (reviewStatus) query = query.eq("review_status", reviewStatus);
+  if (systemStatus) query = query.eq("system_status", systemStatus);
+
+  query = query
+    .order("date_added", { ascending: sort === "oldest" })
+    .order("created_at", { ascending: sort === "oldest" })
+    .range(offset, offset + limit - 1);
+
+  const { data, error, count } = await query;
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Summary counts (always across full table, no filters)
+  const { data: allItems } = await supabase
+    .from("website_reviews")
+    .select("review_status, system_status");
+
+  const summary = {
+    total: allItems?.length ?? 0,
+    pendingReview: allItems?.filter(i => i.review_status === "Pending Review").length ?? 0,
+    approved: allItems?.filter(i => i.review_status === "Approved").length ?? 0,
+    rejected: allItems?.filter(i => i.review_status === "Rejected").length ?? 0,
+    needsChanges: allItems?.filter(i => i.review_status === "Needs Changes").length ?? 0,
+    addedToSystem: allItems?.filter(i => i.system_status === "Added to System").length ?? 0,
+    notAddedToSystem: allItems?.filter(i => i.system_status === "Not Added to System").length ?? 0,
+  };
+
+  return NextResponse.json({
+    data: data ?? [],
+    total: count ?? 0,
+    page,
+    totalPages: Math.ceil((count ?? 0) / limit),
+    summary,
+  });
+}
+
+export async function POST(req: NextRequest) {
+  const supabase = createServerClient();
+  const body = await req.json();
+
+  let domain = (body.domain || "").trim().toLowerCase();
+  // Normalize — strip protocol / www / trailing slash
+  domain = domain
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/\/.*$/, "");
+
+  if (!domain) {
+    return NextResponse.json({ error: "Domain is required" }, { status: 400 });
+  }
+
+  const today = new Date().toISOString().split("T")[0];
+
+  const { data, error } = await supabase
+    .from("website_reviews")
+    .insert({
+      domain,
+      review_status: "Pending Review",
+      system_status: "Not Added to System",
+      date_added: today,
+      review_comments: "",
+    })
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === "23505") {
+      return NextResponse.json({ error: "This domain already exists" }, { status: 409 });
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  // Audit: log the creation
+  if (body.userEmail) {
+    await supabase.from("review_audit_log").insert({
+      website_id: data.id,
+      domain,
+      user_email: body.userEmail,
+      field_changed: "domain",
+      previous_value: null,
+      new_value: domain,
+    });
+  }
+
+  return NextResponse.json(data, { status: 201 });
+}

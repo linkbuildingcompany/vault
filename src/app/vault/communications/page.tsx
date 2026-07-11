@@ -3,7 +3,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { VaultNav } from "@/components/vault-nav";
 import {
   Inbox,
   Send,
@@ -290,8 +289,6 @@ export default function CommunicationsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <VaultNav role={role} userEmail={user?.email} />
-
       {/* Main layout */}
       <div
         className="flex flex-1 overflow-hidden"

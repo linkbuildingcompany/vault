@@ -510,8 +510,8 @@ export default function WebsiteReviewPage() {
         </button>
       </div>
 
-      {/* ── Yashvi Payment Card (only Added to System) ── */}
-      {(payment.total > 0 || payment.internalCount > 0 || payment.externalCount > 0) && (
+      {/* ── Yashvi Payment Card (admin only, Added to System domains) ── */}
+      {role === "admin" && (payment.total > 0 || payment.internalCount > 0 || payment.externalCount > 0) && (
         <div className="mb-5 rounded-xl border border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50 p-4 flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-600">

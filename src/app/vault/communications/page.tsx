@@ -105,6 +105,7 @@ export default function CommunicationsPage() {
   const [search, setSearch] = useState("");
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [listLoading, setListLoading] = useState(false);
+  const [listError, setListError] = useState("");
   const [configured, setConfigured] = useState(true);
   const [inboxUnread, setInboxUnread] = useState(0);
 
@@ -141,6 +142,7 @@ export default function CommunicationsPage() {
 
   const fetchThreads = useCallback(async () => {
     setListLoading(true);
+    setListError("");
     try {
       const token = await getToken();
       const params = new URLSearchParams({ folder });
@@ -148,8 +150,11 @@ export default function CommunicationsPage() {
       const res = await fetch(`/api/vault/communications/threads?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) return;
       const data = await res.json();
+      if (!res.ok) {
+        setListError(`API error ${res.status}: ${data.error || JSON.stringify(data)}`);
+        return;
+      }
       setThreads(data.threads || []);
       setConfigured(data.configured !== false);
       if (folder === "inbox") {
@@ -157,6 +162,8 @@ export default function CommunicationsPage() {
           (data.threads || []).filter((t: ThreadSummary) => t.hasUnread).length
         );
       }
+    } catch (e: any) {
+      setListError(`Fetch failed: ${e.message}`);
     } finally {
       setListLoading(false);
     }
@@ -405,7 +412,11 @@ export default function CommunicationsPage() {
 
           {/* Thread items */}
           <div className="flex-1 overflow-y-auto">
-            {listLoading && threads.length === 0 ? (
+            {listError ? (
+              <div className="p-4 m-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 break-all">
+                {listError}
+              </div>
+            ) : listLoading && threads.length === 0 ? (
               <div className="flex items-center justify-center p-10">
                 <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
               </div>

@@ -69,7 +69,8 @@ export async function GET(req: NextRequest) {
     .from("website_reviews")
     .select("site_type")
     .gte("date_added", payStart)
-    .lt("date_added", payEnd);
+    .lt("date_added", payEnd)
+    .eq("system_status", "Added to System");
 
   const internalCount = paymentItems?.filter(i => i.site_type === "Internal").length ?? 0;
   const externalCount = paymentItems?.filter(i => i.site_type === "External").length ?? 0;

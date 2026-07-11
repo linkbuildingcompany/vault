@@ -100,12 +100,7 @@ const EMPTY_SUMMARY: Summary = {
   notAddedToSystem: 0,
 };
 
-const EMPTY_PAYMENT: Payment = {
-  month: "",
-  internalCount: 0,
-  externalCount: 0,
-  total: 0,
-};
+const EMPTY_PAYMENT: Payment = { month: "", internalCount: 0, externalCount: 0, total: 0 };
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -190,12 +185,11 @@ export default function WebsiteReviewPage() {
     setPage(1);
   }, [filterReviewStatus, filterSystemStatus, filterSiteType, filterMonth, sort]);
 
-  // ── Fetch ────────────────────────────────────────────────────────────────
+  // ── Build query params ───────────────────────────────────────────────────
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({
+  const buildParams = useCallback(
+    () =>
+      new URLSearchParams({
         search: debouncedSearch,
         reviewStatus: filterReviewStatus,
         systemStatus: filterSystemStatus,
@@ -204,8 +198,16 @@ export default function WebsiteReviewPage() {
         sort,
         page: String(page),
         limit: String(PAGE_SIZE),
-      });
-      const res = await fetch(`/api/vault/reviews?${params}`);
+      }),
+    [debouncedSearch, filterReviewStatus, filterSystemStatus, filterSiteType, filterMonth, sort, page]
+  );
+
+  // ── Full fetch (shows spinner — used for filter/page changes) ────────────
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/vault/reviews?${buildParams()}`);
       if (!res.ok) return;
       const json = await res.json();
       setItems(json.data ?? []);
@@ -216,7 +218,24 @@ export default function WebsiteReviewPage() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, filterReviewStatus, filterSystemStatus, filterSiteType, filterMonth, sort, page]);
+  }, [buildParams]);
+
+  // ── Silent refresh (no spinner — used after mutations) ───────────────────
+
+  const silentRefresh = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/vault/reviews?${buildParams()}`);
+      if (!res.ok) return;
+      const json = await res.json();
+      setItems(json.data ?? []);
+      setTotal(json.total ?? 0);
+      setTotalPages(json.totalPages ?? 1);
+      setSummary(json.summary ?? EMPTY_SUMMARY);
+      setPayment(json.payment ?? EMPTY_PAYMENT);
+    } catch {
+      // silently ignore
+    }
+  }, [buildParams]);
 
   useEffect(() => {
     if (!authLoading) fetchData();
@@ -250,7 +269,7 @@ export default function WebsiteReviewPage() {
     });
   };
 
-  // ── Update single item ───────────────────────────────────────────────────
+  // ── Update single item (optimistic) ─────────────────────────────────────
 
   const updateItem = async (
     id: string,
@@ -273,6 +292,14 @@ export default function WebsiteReviewPage() {
       return false;
     }
 
+    // Optimistic update — apply immediately
+    const previousItems = items;
+    if (item) {
+      setItems((prev) =>
+        prev.map((i) => (i.id === id ? { ...i, ...updates } : i))
+      );
+    }
+
     const res = await fetch(`/api/vault/reviews/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -282,9 +309,11 @@ export default function WebsiteReviewPage() {
     if (res.ok) {
       const updated = await res.json();
       setItems((prev) => prev.map((i) => (i.id === id ? updated : i)));
-      fetchData();
+      silentRefresh(); // update summary/payment counts quietly
       return true;
     } else {
+      // Revert optimistic update on failure
+      setItems(previousItems);
       const err = await res.json();
       toast(err.error || "Update failed", "error");
       return false;
@@ -312,7 +341,7 @@ export default function WebsiteReviewPage() {
         setNewDomain("");
         setNewSiteType("External");
         setPage(1);
-        fetchData();
+        silentRefresh(); // no spinner
       } else {
         const err = await res.json();
         setAddError(err.error || "Failed to add domain");
@@ -327,18 +356,26 @@ export default function WebsiteReviewPage() {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleteLoading(true);
+
+    // Optimistic: remove from list immediately
+    const previousItems = items;
+    setItems((prev) => prev.filter((i) => i.id !== deleteTarget.id));
+    setDeleteTarget(null);
+
     try {
       const res = await fetch(`/api/vault/reviews/${deleteTarget.id}`, { method: "DELETE" });
       if (res.ok) {
         toast("Domain deleted");
-        setDeleteTarget(null);
         setSelectedIds((prev) => {
           const next = new Set(prev);
           next.delete(deleteTarget.id);
           return next;
         });
-        fetchData();
+        silentRefresh();
       } else {
+        // Revert
+        setItems(previousItems);
+        setDeleteTarget(deleteTarget);
         toast("Delete failed", "error");
       }
     } finally {
@@ -365,7 +402,7 @@ export default function WebsiteReviewPage() {
       setBulkReviewStatus("");
       setBulkSystemStatus("");
       setBulkDeleteConfirm(false);
-      fetchData();
+      silentRefresh(); // no spinner
     } else {
       const err = await res.json();
       toast(err.error || "Action failed", "error");
@@ -425,9 +462,7 @@ export default function WebsiteReviewPage() {
 
   const fmtDate = (d: string) => {
     if (!d) return "—";
-    return new Date(d).toLocaleDateString("en-GB", {
-      day: "2-digit", month: "short", year: "numeric",
-    });
+    return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   };
 
   const fmtField = (f: string) =>
@@ -475,8 +510,8 @@ export default function WebsiteReviewPage() {
         </button>
       </div>
 
-      {/* ── Yashvi Payment Card ── */}
-      {payment.total > 0 || payment.internalCount > 0 || payment.externalCount > 0 ? (
+      {/* ── Yashvi Payment Card (only Added to System) ── */}
+      {(payment.total > 0 || payment.internalCount > 0 || payment.externalCount > 0) && (
         <div className="mb-5 rounded-xl border border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50 p-4 flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-600">
@@ -498,11 +533,9 @@ export default function WebsiteReviewPage() {
               {payment.externalCount} External × ₹500
             </span>
           </div>
-          {!filterMonth && (
-            <p className="text-xs text-purple-400 ml-auto">Current month</p>
-          )}
+          <p className="text-xs text-purple-400 ml-auto">Added to System only</p>
         </div>
-      ) : null}
+      )}
 
       {/* ── Summary Cards ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
@@ -927,7 +960,6 @@ export default function WebsiteReviewPage() {
               className="w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/20 mb-4"
               autoFocus
             />
-            {/* Site Type selector */}
             <div className="mb-4">
               <label className="block text-xs font-medium text-gray-600 mb-2">Site Type</label>
               <div className="flex gap-2">
@@ -1081,7 +1113,11 @@ export default function WebsiteReviewPage() {
               t.type === "success" ? "bg-gray-900" : "bg-red-600"
             }`}
           >
-            {t.type === "success" ? <Check className="h-4 w-4 shrink-0" /> : <AlertCircle className="h-4 w-4 shrink-0" />}
+            {t.type === "success" ? (
+              <Check className="h-4 w-4 shrink-0" />
+            ) : (
+              <AlertCircle className="h-4 w-4 shrink-0" />
+            )}
             {t.message}
           </div>
         ))}

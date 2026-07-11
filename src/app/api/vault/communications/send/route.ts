@@ -19,11 +19,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Subject and body are required" }, { status: 400 });
     }
 
-    const { data: settings } = await db
+    // Use select("*") so a missing sender_email column doesn't kill the whole query
+    const { data: settings, error: settingsError } = await db
       .from("reviewer_settings")
-      .select("sender_email, reviewer_1_email, reviewer_2_email")
+      .select("*")
       .eq("id", 1)
       .single();
+
+    if (settingsError) {
+      console.error("Settings fetch error:", settingsError.message);
+    }
 
     const senderEmail = settings?.sender_email || "ravi.soni4254@gmail.com";
     const r1 = settings?.reviewer_1_email;

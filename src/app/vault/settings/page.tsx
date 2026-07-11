@@ -2,7 +2,6 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { VaultNav } from "@/components/vault-nav";
 import { useAuth } from "@/hooks/useAuth";
 import {
   Mail,
@@ -122,8 +121,6 @@ export default function VaultSettingsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <VaultNav role={role} userEmail={user?.email} />
-
       <div className="max-w-5xl mx-auto px-6 py-8">
         {/* Page header */}
         <div className="mb-8">

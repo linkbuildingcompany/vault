@@ -45,9 +45,10 @@ export async function GET(req: NextRequest) {
 
     let q = "";
     if (folder === "inbox") {
-      q = `in:inbox (${reviewerEmails.map((e) => `from:${e}`).join(" OR ")})`;
+      q = `(${reviewerEmails.map((e) => `from:${e}`).join(" OR ")})`;
     } else {
-      q = `in:sent (${reviewerEmails.map((e) => `to:${e}`).join(" OR ")})`;
+      // Use from:me instead of in:sent — catches emails regardless of SENT label
+      q = `from:me (${reviewerEmails.map((e) => `to:${e}`).join(" OR ")})`;
     }
     if (search) q += ` ${search}`;
 

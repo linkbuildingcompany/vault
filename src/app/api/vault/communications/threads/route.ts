@@ -3,23 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getGmailClient } from "@/lib/gmail";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-
-async function getDbClient(req: NextRequest) {
-  const token = (req.headers.get("authorization") || "").replace("Bearer ", "").trim();
-  if (!token) return null;
-  const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-    global: { headers: { Authorization: `Bearer ${token}` } },
-    auth: { persistSession: false },
-  });
-  const { data: { user } } = await userClient.auth.getUser();
-  if (!user) return null;
-  return supabaseServiceKey
-    ? createClient(supabaseUrl, supabaseServiceKey, { auth: { persistSession: false } })
-    : userClient;
-}
+const db = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  { auth: { persistSession: false } }
+);
 
 function getHeader(headers: { name: string; value: string }[], name: string): string {
   return headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value || "";
@@ -34,15 +22,12 @@ function maskSender(from: string, r1: string, r2: string): string {
 
 export async function GET(req: NextRequest) {
   try {
-    const dbClient = await getDbClient(req);
-    if (!dbClient) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
     const { searchParams } = new URL(req.url);
     const folder = searchParams.get("folder") || "inbox";
     const search = searchParams.get("search") || "";
     const pageToken = searchParams.get("pageToken") || undefined;
 
-    const { data: settings } = await dbClient
+    const { data: settings } = await db
       .from("reviewer_settings")
       .select("reviewer_1_email, reviewer_2_email")
       .eq("id", 1)
@@ -89,23 +74,17 @@ export async function GET(req: NextRequest) {
             format: "METADATA" as "METADATA",
             metadataHeaders: ["Subject", "From", "To", "Date", "Message-ID"],
           });
-
           const messages = res.data.messages || [];
           if (!messages.length) return null;
-
           const firstMsg = messages[0];
           const lastMsg = messages[messages.length - 1];
           const firstHeaders = (firstMsg.payload?.headers || []) as { name: string; value: string }[];
           const lastHeaders = (lastMsg.payload?.headers || []) as { name: string; value: string }[];
-
           const subject = getHeader(firstHeaders, "Subject") || "(no subject)";
           const from = getHeader(lastHeaders, "From");
           const sender = maskSender(from, r1, r2);
-          const date = lastMsg.internalDate
-            ? new Date(parseInt(lastMsg.internalDate)).toISOString()
-            : "";
+          const date = lastMsg.internalDate ? new Date(parseInt(lastMsg.internalDate)).toISOString() : "";
           const hasUnread = messages.some((m) => (m.labelIds || []).includes("UNREAD"));
-
           return { id: item.id, subject, snippet: item.snippet || "", date, sender, messageCount: messages.length, hasUnread };
         } catch {
           return null;
@@ -113,11 +92,7 @@ export async function GET(req: NextRequest) {
       })
     );
 
-    return NextResponse.json({
-      threads: threads.filter(Boolean),
-      nextPageToken,
-      configured: true,
-    });
+    return NextResponse.json({ threads: threads.filter(Boolean), nextPageToken, configured: true });
   } catch (err: any) {
     console.error("Threads error:", err);
     return NextResponse.json({ error: err.message || "Internal error" }, { status: 500 });

@@ -16,9 +16,16 @@ import {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface ReviewerSettings {
+  sender_email: string;
   reviewer_1_email: string;
   reviewer_2_email: string;
 }
+
+const DEFAULT_SETTINGS: ReviewerSettings = {
+  sender_email: "",
+  reviewer_1_email: "",
+  reviewer_2_email: "",
+};
 
 // ── Settings sections config ──────────────────────────────────────────────────
 const SECTIONS = [
@@ -39,14 +46,8 @@ export default function VaultSettingsPage() {
   const [activeSection, setActiveSection] = useState("reviewers");
 
   // Reviewer settings state
-  const [reviewerSettings, setReviewerSettings] = useState<ReviewerSettings>({
-    reviewer_1_email: "",
-    reviewer_2_email: "",
-  });
-  const [originalSettings, setOriginalSettings] = useState<ReviewerSettings>({
-    reviewer_1_email: "",
-    reviewer_2_email: "",
-  });
+  const [reviewerSettings, setReviewerSettings] = useState<ReviewerSettings>(DEFAULT_SETTINGS);
+  const [originalSettings, setOriginalSettings] = useState<ReviewerSettings>(DEFAULT_SETTINGS);
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle");
@@ -66,7 +67,8 @@ export default function VaultSettingsPage() {
     fetch("/api/vault/communications/settings")
       .then((r) => r.json())
       .then((data) => {
-        const s = {
+        const s: ReviewerSettings = {
+          sender_email: data.sender_email || "",
           reviewer_1_email: data.reviewer_1_email || "",
           reviewer_2_email: data.reviewer_2_email || "",
         };
@@ -78,6 +80,7 @@ export default function VaultSettingsPage() {
   }, [role]);
 
   const isDirty =
+    reviewerSettings.sender_email !== originalSettings.sender_email ||
     reviewerSettings.reviewer_1_email !== originalSettings.reviewer_1_email ||
     reviewerSettings.reviewer_2_email !== originalSettings.reviewer_2_email;
 
@@ -179,7 +182,7 @@ export default function VaultSettingsPage() {
                         Reviewer Emails
                       </h2>
                       <p className="text-xs text-gray-500 mt-0.5">
-                        These addresses receive review communications. Never visible to viewers.
+                        Configure sender and recipients for review communications.
                       </p>
                     </div>
                   </div>
@@ -193,55 +196,94 @@ export default function VaultSettingsPage() {
                       Loading settings…
                     </div>
                   ) : (
-                    <div className="space-y-5 max-w-md">
-                      {/* Reviewer 1 */}
+                    <div className="space-y-6 max-w-md">
+
+                      {/* Divider: Sender */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                          Reviewer 1
-                          <span className="ml-2 text-xs font-normal text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
-                            TO
-                          </span>
-                        </label>
-                        <input
-                          type="email"
-                          value={reviewerSettings.reviewer_1_email}
-                          onChange={(e) =>
-                            setReviewerSettings((s) => ({
-                              ...s,
-                              reviewer_1_email: e.target.value,
-                            }))
-                          }
-                          placeholder="reviewer1@example.com"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                        />
-                        <p className="mt-1 text-xs text-gray-400">
-                          Primary reviewer — listed as "Reviewer 1" in the app
+                        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">
+                          Sender
                         </p>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                            Sender Email
+                            <span className="ml-2 text-xs font-normal text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                              FROM
+                            </span>
+                          </label>
+                          <input
+                            type="email"
+                            value={reviewerSettings.sender_email}
+                            onChange={(e) =>
+                              setReviewerSettings((s) => ({
+                                ...s,
+                                sender_email: e.target.value,
+                              }))
+                            }
+                            placeholder="ravi.soni4254@gmail.com"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                          />
+                          <p className="mt-1 text-xs text-gray-400">
+                            Gmail account used to send emails. Must match the OAuth account or a configured alias.
+                          </p>
+                        </div>
                       </div>
 
-                      {/* Reviewer 2 */}
+                      {/* Divider: Recipients */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                          Reviewer 2
-                          <span className="ml-2 text-xs font-normal text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
-                            CC
-                          </span>
-                        </label>
-                        <input
-                          type="email"
-                          value={reviewerSettings.reviewer_2_email}
-                          onChange={(e) =>
-                            setReviewerSettings((s) => ({
-                              ...s,
-                              reviewer_2_email: e.target.value,
-                            }))
-                          }
-                          placeholder="reviewer2@example.com"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                        />
-                        <p className="mt-1 text-xs text-gray-400">
-                          Secondary reviewer — CC'd on all communications
+                        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">
+                          Recipients
                         </p>
+                        <div className="space-y-5">
+                          {/* Reviewer 1 */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                              Reviewer 1
+                              <span className="ml-2 text-xs font-normal text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                                TO
+                              </span>
+                            </label>
+                            <input
+                              type="email"
+                              value={reviewerSettings.reviewer_1_email}
+                              onChange={(e) =>
+                                setReviewerSettings((s) => ({
+                                  ...s,
+                                  reviewer_1_email: e.target.value,
+                                }))
+                              }
+                              placeholder="reviewer1@example.com"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                            />
+                            <p className="mt-1 text-xs text-gray-400">
+                              Primary reviewer — listed as "Reviewer 1" in the app
+                            </p>
+                          </div>
+
+                          {/* Reviewer 2 */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                              Reviewer 2
+                              <span className="ml-2 text-xs font-normal text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                                CC
+                              </span>
+                            </label>
+                            <input
+                              type="email"
+                              value={reviewerSettings.reviewer_2_email}
+                              onChange={(e) =>
+                                setReviewerSettings((s) => ({
+                                  ...s,
+                                  reviewer_2_email: e.target.value,
+                                }))
+                              }
+                              placeholder="reviewer2@example.com"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                            />
+                            <p className="mt-1 text-xs text-gray-400">
+                              Secondary reviewer — CC'd on all communications
+                            </p>
+                          </div>
+                        </div>
                       </div>
 
                       {/* Status message */}
@@ -287,7 +329,7 @@ export default function VaultSettingsPage() {
                 {/* Info footer */}
                 <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">
                   <p className="text-xs text-gray-400">
-                    🔒 These email addresses are stored securely and only used server-side. 
+                    🔒 These email addresses are stored securely and only used server-side.
                     Team members see "Reviewer 1" and "Reviewer 2" — never the real addresses.
                   </p>
                 </div>

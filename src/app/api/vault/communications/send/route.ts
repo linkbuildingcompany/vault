@@ -31,10 +31,11 @@ export async function POST(req: NextRequest) {
 
   const { data: settings } = await supabase
     .from("reviewer_settings")
-    .select("reviewer_1_email, reviewer_2_email")
+    .select("sender_email, reviewer_1_email, reviewer_2_email")
     .eq("id", 1)
     .single();
 
+  const senderEmail = settings?.sender_email || "ravi.soni4254@gmail.com";
   const r1 = settings?.reviewer_1_email;
   const r2 = settings?.reviewer_2_email;
 
@@ -50,7 +51,7 @@ export async function POST(req: NextRequest) {
   const raw = buildEmail({
     to: r1,
     cc: r2 || undefined,
-    from: "ravi.soni4254@gmail.com",
+    from: senderEmail,
     subject,
     body: text,
   });

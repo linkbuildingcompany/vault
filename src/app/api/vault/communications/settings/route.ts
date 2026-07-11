@@ -21,12 +21,12 @@ export async function GET(_req: NextRequest) {
 
   const { data, error } = await supabase
     .from("reviewer_settings")
-    .select("reviewer_1_email, reviewer_2_email")
+    .select("sender_email, reviewer_1_email, reviewer_2_email")
     .eq("id", 1)
     .single();
 
   if (error || !data) {
-    return NextResponse.json({ reviewer_1_email: "", reviewer_2_email: "" });
+    return NextResponse.json({ sender_email: "", reviewer_1_email: "", reviewer_2_email: "" });
   }
   return NextResponse.json(data);
 }
@@ -36,11 +36,13 @@ export async function PUT(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const body = await req.json().catch(() => ({}));
+  const sender_email = (body.sender_email || "").trim();
   const reviewer_1_email = (body.reviewer_1_email || "").trim();
   const reviewer_2_email = (body.reviewer_2_email || "").trim();
 
   const { error } = await supabase.from("reviewer_settings").upsert({
     id: 1,
+    sender_email,
     reviewer_1_email,
     reviewer_2_email,
     updated_at: new Date().toISOString(),

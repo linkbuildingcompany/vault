@@ -23,7 +23,6 @@ function maskSender(from: string, r1: string, r2: string): string {
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const folder = searchParams.get("folder") || "inbox";
     const search = searchParams.get("search") || "";
     const pageToken = searchParams.get("pageToken") || undefined;
 
@@ -43,12 +42,9 @@ export async function GET(req: NextRequest) {
     const gmail = getGmailClient();
     const reviewerEmails = [r1, r2].filter(Boolean);
 
-    let q = "";
-    if (folder === "inbox") {
-      q = `(${reviewerEmails.map((e) => `from:${e}`).join(" OR ")})`;
-    } else {
-      q = `(${reviewerEmails.map((e) => `to:${e}`).join(" OR ")})`;
-    }
+    // Unified query: all threads to OR from reviewer emails
+    const parts = reviewerEmails.flatMap((e) => [`to:${e}`, `from:${e}`]);
+    let q = `(${parts.join(" OR ")})`;
     if (search) q += ` ${search}`;
 
     const listRes = await gmail.users.threads.list({
@@ -83,16 +79,30 @@ export async function GET(req: NextRequest) {
           const subject = getHeader(firstHeaders, "Subject") || "(no subject)";
           const from = getHeader(lastHeaders, "From");
           const sender = maskSender(from, r1, r2);
-          const date = lastMsg.internalDate ? new Date(parseInt(lastMsg.internalDate)).toISOString() : "";
+          const date = lastMsg.internalDate
+            ? new Date(parseInt(lastMsg.internalDate)).toISOString()
+            : "";
           const hasUnread = messages.some((m) => (m.labelIds || []).includes("UNREAD"));
-          return { id: item.id, subject, snippet: item.snippet || "", date, sender, messageCount: messages.length, hasUnread };
+          return {
+            id: item.id,
+            subject,
+            snippet: item.snippet || "",
+            date,
+            sender,
+            messageCount: messages.length,
+            hasUnread,
+          };
         } catch {
           return null;
         }
       })
     );
 
-    return NextResponse.json({ threads: threads.filter(Boolean), nextPageToken, configured: true });
+    return NextResponse.json({
+      threads: threads.filter(Boolean),
+      nextPageToken,
+      configured: true,
+    });
   } catch (err: any) {
     console.error("Threads error:", err);
     return NextResponse.json({ error: err.message || "Internal error" }, { status: 500 });

@@ -1,16 +1,28 @@
 // src/app/api/vault/communications/threads/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@/lib/supabase";
+import { createClient } from "@supabase/supabase-js";
 import { getGmailClient } from "@/lib/gmail";
 
-function getHeader(
-  headers: { name: string; value: string }[],
-  name: string
-): string {
-  return (
-    headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ||
-    ""
-  );
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+
+async function getDbClient(req: NextRequest) {
+  const token = (req.headers.get("authorization") || "").replace("Bearer ", "").trim();
+  if (!token) return null;
+  const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+    auth: { persistSession: false },
+  });
+  const { data: { user } } = await userClient.auth.getUser();
+  if (!user) return null;
+  return supabaseServiceKey
+    ? createClient(supabaseUrl, supabaseServiceKey, { auth: { persistSession: false } })
+    : userClient;
+}
+
+function getHeader(headers: { name: string; value: string }[], name: string): string {
+  return headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value || "";
 }
 
 function maskSender(from: string, r1: string, r2: string): string {
@@ -21,110 +33,93 @@ function maskSender(from: string, r1: string, r2: string): string {
 }
 
 export async function GET(req: NextRequest) {
-  const supabase = createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const dbClient = await getDbClient(req);
+    if (!dbClient) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { searchParams } = new URL(req.url);
-  const folder = searchParams.get("folder") || "inbox";
-  const search = searchParams.get("search") || "";
-  const pageToken = searchParams.get("pageToken") || undefined;
+    const { searchParams } = new URL(req.url);
+    const folder = searchParams.get("folder") || "inbox";
+    const search = searchParams.get("search") || "";
+    const pageToken = searchParams.get("pageToken") || undefined;
 
-  // Get reviewer emails (server-side only — never sent to client)
-  const { data: settings } = await supabase
-    .from("reviewer_settings")
-    .select("reviewer_1_email, reviewer_2_email")
-    .eq("id", 1)
-    .single();
+    const { data: settings } = await dbClient
+      .from("reviewer_settings")
+      .select("reviewer_1_email, reviewer_2_email")
+      .eq("id", 1)
+      .single();
 
-  const r1 = settings?.reviewer_1_email || "";
-  const r2 = settings?.reviewer_2_email || "";
+    const r1 = settings?.reviewer_1_email || "";
+    const r2 = settings?.reviewer_2_email || "";
 
-  if (!r1 && !r2) {
-    return NextResponse.json({ threads: [], nextPageToken: null, configured: false });
+    if (!r1 && !r2) {
+      return NextResponse.json({ threads: [], nextPageToken: null, configured: false });
+    }
+
+    const gmail = getGmailClient();
+    const reviewerEmails = [r1, r2].filter(Boolean);
+
+    let q = "";
+    if (folder === "inbox") {
+      q = `in:inbox (${reviewerEmails.map((e) => `from:${e}`).join(" OR ")})`;
+    } else {
+      q = `in:sent (${reviewerEmails.map((e) => `to:${e}`).join(" OR ")})`;
+    }
+    if (search) q += ` ${search}`;
+
+    const listRes = await gmail.users.threads.list({
+      userId: "me",
+      q,
+      maxResults: 25,
+      ...(pageToken ? { pageToken } : {}),
+    });
+
+    const items = listRes.data.threads || [];
+    const nextPageToken = listRes.data.nextPageToken || null;
+
+    if (items.length === 0) {
+      return NextResponse.json({ threads: [], nextPageToken, configured: true });
+    }
+
+    const threads = await Promise.all(
+      items.map(async (item) => {
+        try {
+          const res = await gmail.users.threads.get({
+            userId: "me",
+            id: item.id!,
+            format: "METADATA" as "METADATA",
+            metadataHeaders: ["Subject", "From", "To", "Date", "Message-ID"],
+          });
+
+          const messages = res.data.messages || [];
+          if (!messages.length) return null;
+
+          const firstMsg = messages[0];
+          const lastMsg = messages[messages.length - 1];
+          const firstHeaders = (firstMsg.payload?.headers || []) as { name: string; value: string }[];
+          const lastHeaders = (lastMsg.payload?.headers || []) as { name: string; value: string }[];
+
+          const subject = getHeader(firstHeaders, "Subject") || "(no subject)";
+          const from = getHeader(lastHeaders, "From");
+          const sender = maskSender(from, r1, r2);
+          const date = lastMsg.internalDate
+            ? new Date(parseInt(lastMsg.internalDate)).toISOString()
+            : "";
+          const hasUnread = messages.some((m) => (m.labelIds || []).includes("UNREAD"));
+
+          return { id: item.id, subject, snippet: item.snippet || "", date, sender, messageCount: messages.length, hasUnread };
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    return NextResponse.json({
+      threads: threads.filter(Boolean),
+      nextPageToken,
+      configured: true,
+    });
+  } catch (err: any) {
+    console.error("Threads error:", err);
+    return NextResponse.json({ error: err.message || "Internal error" }, { status: 500 });
   }
-
-  const gmail = getGmailClient();
-
-  const reviewerEmails = [r1, r2].filter(Boolean);
-
-  let q = "";
-  if (folder === "inbox") {
-    q = `in:inbox (${reviewerEmails.map((e) => `from:${e}`).join(" OR ")})`;
-  } else {
-    q = `in:sent (${reviewerEmails.map((e) => `to:${e}`).join(" OR ")})`;
-  }
-  if (search) q += ` ${search}`;
-
-  const listRes = await gmail.users.threads.list({
-    userId: "me",
-    q,
-    maxResults: 25,
-    ...(pageToken ? { pageToken } : {}),
-  });
-
-  const items = listRes.data.threads || [];
-  const nextPageToken = listRes.data.nextPageToken || null;
-
-  if (items.length === 0) {
-    return NextResponse.json({ threads: [], nextPageToken, configured: true });
-  }
-
-  // Fetch thread metadata in parallel
-  const threads = await Promise.all(
-    items.map(async (item) => {
-      try {
-        const res = await gmail.users.threads.get({
-          userId: "me",
-          id: item.id!,
-          format: "METADATA" as "METADATA",
-          metadataHeaders: ["Subject", "From", "To", "Date", "Message-ID"],
-        });
-
-        const messages = res.data.messages || [];
-        if (!messages.length) return null;
-
-        const firstMsg = messages[0];
-        const lastMsg = messages[messages.length - 1];
-
-        const firstHeaders = (firstMsg.payload?.headers || []) as {
-          name: string;
-          value: string;
-        }[];
-        const lastHeaders = (lastMsg.payload?.headers || []) as {
-          name: string;
-          value: string;
-        }[];
-
-        const subject =
-          getHeader(firstHeaders, "Subject") || "(no subject)";
-        const from = getHeader(lastHeaders, "From");
-        const sender = maskSender(from, r1, r2);
-        const date = lastMsg.internalDate
-          ? new Date(parseInt(lastMsg.internalDate)).toISOString()
-          : "";
-        const hasUnread = messages.some((m) =>
-          (m.labelIds || []).includes("UNREAD")
-        );
-
-        return {
-          id: item.id,
-          subject,
-          snippet: item.snippet || "",
-          date,
-          sender,
-          messageCount: messages.length,
-          hasUnread,
-        };
-      } catch {
-        return null;
-      }
-    })
-  );
-
-  return NextResponse.json({
-    threads: threads.filter(Boolean),
-    nextPageToken,
-    configured: true,
-  });
 }

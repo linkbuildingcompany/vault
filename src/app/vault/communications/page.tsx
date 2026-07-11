@@ -3,6 +3,17 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+async function getToken(): Promise<string> {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token || "";
+}
 import {
   Inbox,
   Send,
@@ -136,9 +147,12 @@ export default function CommunicationsPage() {
   const fetchThreads = useCallback(async () => {
     setListLoading(true);
     try {
+      const token = await getToken();
       const params = new URLSearchParams({ folder });
       if (search) params.set("search", search);
-      const res = await fetch(`/api/vault/communications/threads?${params}`);
+      const res = await fetch(`/api/vault/communications/threads?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (!res.ok) return;
       const data = await res.json();
       setThreads(data.threads || []);
@@ -163,8 +177,10 @@ export default function CommunicationsPage() {
     setThreadLoading(true);
     setThreadDetail(null);
     try {
+      const token = await getToken();
       const res = await fetch(
-        `/api/vault/communications/threads/${threadId}`
+        `/api/vault/communications/threads/${threadId}`,
+        { headers: { Authorization: `Bearer ${token}` } }
       );
       if (!res.ok) return;
       const data = await res.json();
@@ -229,11 +245,12 @@ export default function CommunicationsPage() {
     setReplying(true);
     setReplyErr("");
     try {
+      const token = await getToken();
       const res = await fetch(
         `/api/vault/communications/threads/${selectedId}/reply`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({ body: replyBody }),
         }
       );
@@ -252,7 +269,10 @@ export default function CommunicationsPage() {
   // ── Settings ────────────────────────────────────────────────────────────────
 
   const loadSettings = useCallback(async () => {
-    const res = await fetch("/api/vault/communications/settings");
+    const token = await getToken();
+    const res = await fetch("/api/vault/communications/settings", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     if (res.ok) setReviewerSettings(await res.json());
   }, []);
 
@@ -264,9 +284,10 @@ export default function CommunicationsPage() {
     setSavingSettings(true);
     setSettingsMsg("");
     try {
+      const token = await getToken();
       const res = await fetch("/api/vault/communications/settings", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(reviewerSettings),
       });
       const data = await res.json();

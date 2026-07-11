@@ -213,9 +213,10 @@ export default function CommunicationsPage() {
     setSending(true);
     setComposeErr("");
     try {
+      const token = await getToken();
       const res = await fetch("/api/vault/communications/send", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ subject: cSubject, body: cBody }),
       });
       const data = await res.json();

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/lib/supabase";
 import {
   Mail,
   Users,
@@ -64,19 +65,24 @@ export default function VaultSettingsPage() {
   useEffect(() => {
     if (role !== "admin") return;
     setLoadingSettings(true);
-    fetch("/api/vault/communications/settings")
-      .then((r) => r.json())
-      .then((data) => {
-        const s: ReviewerSettings = {
-          sender_email: data.sender_email || "",
-          reviewer_1_email: data.reviewer_1_email || "",
-          reviewer_2_email: data.reviewer_2_email || "",
-        };
-        setReviewerSettings(s);
-        setOriginalSettings(s);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const token = session?.access_token || "";
+      fetch("/api/vault/communications/settings", {
+        headers: { Authorization: `Bearer ${token}` },
       })
-      .catch(() => {})
-      .finally(() => setLoadingSettings(false));
+        .then((r) => r.json())
+        .then((data) => {
+          const s: ReviewerSettings = {
+            sender_email: data.sender_email || "",
+            reviewer_1_email: data.reviewer_1_email || "",
+            reviewer_2_email: data.reviewer_2_email || "",
+          };
+          setReviewerSettings(s);
+          setOriginalSettings(s);
+        })
+        .catch(() => {})
+        .finally(() => setLoadingSettings(false));
+    });
   }, [role]);
 
   const isDirty =
@@ -89,9 +95,14 @@ export default function VaultSettingsPage() {
     setSaveStatus("idle");
     setSaveMsg("");
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || "";
       const res = await fetch("/api/vault/communications/settings", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify(reviewerSettings),
       });
       const data = await res.json();

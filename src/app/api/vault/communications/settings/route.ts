@@ -1,25 +1,38 @@
 // src/app/api/vault/communications/settings/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@/lib/supabase";
+import { createClient } from "@supabase/supabase-js";
 
-async function requireAdmin() {
-  const supabase = createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { user: null, supabase };
-  const { data: profile } = await supabase
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+async function requireAdmin(req: NextRequest) {
+  const authHeader = req.headers.get("authorization") || "";
+  const token = authHeader.replace("Bearer ", "").trim();
+  if (!token) return null;
+
+  // Verify user with anon client + their token
+  const anonClient = createClient(supabaseUrl, supabaseAnonKey);
+  const { data: { user } } = await anonClient.auth.getUser(token);
+  if (!user) return null;
+
+  // Check role with service role client (bypasses RLS)
+  const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
+  const { data: profile } = await serviceClient
     .from("profiles")
     .select("role")
     .eq("id", user.id)
     .single();
-  if (profile?.role !== "admin") return { user: null, supabase };
-  return { user, supabase };
+
+  if (profile?.role !== "admin") return null;
+  return serviceClient;
 }
 
-export async function GET(_req: NextRequest) {
-  const { user, supabase } = await requireAdmin();
-  if (!user) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+export async function GET(req: NextRequest) {
+  const serviceClient = await requireAdmin(req);
+  if (!serviceClient) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const { data, error } = await supabase
+  const { data, error } = await serviceClient
     .from("reviewer_settings")
     .select("sender_email, reviewer_1_email, reviewer_2_email")
     .eq("id", 1)
@@ -32,15 +45,15 @@ export async function GET(_req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
-  const { user, supabase } = await requireAdmin();
-  if (!user) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const serviceClient = await requireAdmin(req);
+  if (!serviceClient) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const body = await req.json().catch(() => ({}));
   const sender_email = (body.sender_email || "").trim();
   const reviewer_1_email = (body.reviewer_1_email || "").trim();
   const reviewer_2_email = (body.reviewer_2_email || "").trim();
 
-  const { error } = await supabase.from("reviewer_settings").upsert({
+  const { error } = await serviceClient.from("reviewer_settings").upsert({
     id: 1,
     sender_email,
     reviewer_1_email,

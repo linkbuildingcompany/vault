@@ -98,7 +98,7 @@ export default function VaultSettingsPage() {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token || "";
       const res = await fetch("/api/vault/communications/settings", {
-        method: "PUT",
+        method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,

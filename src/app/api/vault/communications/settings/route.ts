@@ -24,17 +24,21 @@ export async function GET() {
   }
 }
 
-export async function PUT(req: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
     const reviewer_1_email = (body.reviewer_1_email || "").trim();
     const reviewer_2_email = (body.reviewer_2_email || "").trim();
     const sender_email = (body.sender_email || "").trim();
 
-    const payload: any = { id: 1, reviewer_1_email, reviewer_2_email, updated_at: new Date().toISOString() };
-    let { error } = await db.from("reviewer_settings").upsert({ ...payload, sender_email });
+    // Try with sender_email first; fall back without it if column missing
+    let { error } = await db.from("reviewer_settings").upsert({
+      id: 1, reviewer_1_email, reviewer_2_email, sender_email,
+    });
     if (error?.message?.includes("sender_email")) {
-      const result = await db.from("reviewer_settings").upsert(payload);
+      const result = await db.from("reviewer_settings").upsert({
+        id: 1, reviewer_1_email, reviewer_2_email,
+      });
       error = result.error;
     }
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });

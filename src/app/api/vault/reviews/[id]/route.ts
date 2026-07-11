@@ -10,25 +10,17 @@ export async function PATCH(
   const body = await req.json();
   const { id } = params;
 
-  // Validation: comments required for Rejected / Needs Changes
   const newStatus = body.review_status as string | undefined;
   if (newStatus === "Rejected" || newStatus === "Needs Changes") {
-    const comments =
-      body.review_comments !== undefined
-        ? body.review_comments
-        : undefined;
-    // Only block if comments field is being explicitly set to empty
+    const comments = body.review_comments !== undefined ? body.review_comments : undefined;
     if (comments !== undefined && !String(comments).trim()) {
       return NextResponse.json(
-        {
-          error: `Review comments are required when status is "${newStatus}"`,
-        },
+        { error: `Review comments are required when status is "${newStatus}"` },
         { status: 400 }
       );
     }
   }
 
-  // Fetch current record for diff / audit
   const { data: current } = await supabase
     .from("website_reviews")
     .select("*")
@@ -39,7 +31,6 @@ export async function PATCH(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Validate combined state: if changing to Rejected/Needs Changes, existing comments must exist
   const effectiveStatus = newStatus ?? current.review_status;
   const effectiveComments =
     body.review_comments !== undefined
@@ -51,19 +42,17 @@ export async function PATCH(
     !effectiveComments
   ) {
     return NextResponse.json(
-      {
-        error: `Review comments are required for "${effectiveStatus}" status`,
-      },
+      { error: `Review comments are required for "${effectiveStatus}" status` },
       { status: 400 }
     );
   }
 
-  // Build update payload and audit entries
   const trackable = [
     "review_status",
     "system_status",
     "review_comments",
     "domain",
+    "site_type",
   ] as const;
 
   const updates: Record<string, unknown> = {
@@ -82,7 +71,6 @@ export async function PATCH(
     }
   }
 
-  // If nothing changed, return current
   if (auditEntries.length === 0) {
     return NextResponse.json(current);
   }
@@ -96,7 +84,6 @@ export async function PATCH(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Write audit log
   if (body.userEmail && auditEntries.length > 0) {
     await supabase.from("review_audit_log").insert(
       auditEntries.map((e) => ({

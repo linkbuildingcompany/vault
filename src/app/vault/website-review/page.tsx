@@ -15,6 +15,7 @@ import {
   Globe,
   Edit2,
   Clock,
+  IndianRupee,
 } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -24,6 +25,7 @@ interface WebsiteReview {
   domain: string;
   review_status: "Pending Review" | "Approved" | "Rejected" | "Needs Changes";
   system_status: "Not Added to System" | "Added to System";
+  site_type: "Internal" | "External";
   date_added: string;
   review_comments: string;
   created_at: string;
@@ -51,6 +53,13 @@ interface Summary {
   notAddedToSystem: number;
 }
 
+interface Payment {
+  month: string;
+  internalCount: number;
+  externalCount: number;
+  total: number;
+}
+
 interface Toast {
   id: string;
   message: string;
@@ -59,13 +68,9 @@ interface Toast {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const REVIEW_STATUSES = [
-  "Pending Review",
-  "Approved",
-  "Rejected",
-  "Needs Changes",
-];
+const REVIEW_STATUSES = ["Pending Review", "Approved", "Rejected", "Needs Changes"];
 const SYSTEM_STATUSES = ["Not Added to System", "Added to System"];
+const SITE_TYPES = ["Internal", "External"];
 const PAGE_SIZE = 25;
 
 const reviewStatusStyle: Record<string, string> = {
@@ -80,6 +85,11 @@ const systemStatusStyle: Record<string, string> = {
   "Added to System": "bg-blue-100 text-blue-800",
 };
 
+const siteTypeStyle: Record<string, string> = {
+  Internal: "bg-purple-100 text-purple-800",
+  External: "bg-teal-100 text-teal-800",
+};
+
 const EMPTY_SUMMARY: Summary = {
   total: 0,
   pendingReview: 0,
@@ -88,6 +98,13 @@ const EMPTY_SUMMARY: Summary = {
   needsChanges: 0,
   addedToSystem: 0,
   notAddedToSystem: 0,
+};
+
+const EMPTY_PAYMENT: Payment = {
+  month: "",
+  internalCount: 0,
+  externalCount: 0,
+  total: 0,
 };
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -101,12 +118,14 @@ export default function WebsiteReviewPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<Summary>(EMPTY_SUMMARY);
+  const [payment, setPayment] = useState<Payment>(EMPTY_PAYMENT);
 
   // Filters
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filterReviewStatus, setFilterReviewStatus] = useState("");
   const [filterSystemStatus, setFilterSystemStatus] = useState("");
+  const [filterSiteType, setFilterSiteType] = useState("");
   const [filterMonth, setFilterMonth] = useState("");
   const [sort, setSort] = useState<"newest" | "oldest">("newest");
   const [page, setPage] = useState(1);
@@ -128,6 +147,7 @@ export default function WebsiteReviewPage() {
   // Add domain dialog
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [newDomain, setNewDomain] = useState("");
+  const [newSiteType, setNewSiteType] = useState<"Internal" | "External">("External");
   const [addLoading, setAddLoading] = useState(false);
   const [addError, setAddError] = useState("");
 
@@ -145,21 +165,18 @@ export default function WebsiteReviewPage() {
 
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Toast helper ────────────────────────────────────────────────────────
+  // ── Toast helper ─────────────────────────────────────────────────────────
 
   const toast = useCallback(
     (message: string, type: "success" | "error" = "success") => {
       const id = Math.random().toString(36).slice(2);
       setToasts((prev) => [...prev, { id, message, type }]);
-      setTimeout(
-        () => setToasts((prev) => prev.filter((t) => t.id !== id)),
-        3500
-      );
+      setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3500);
     },
     []
   );
 
-  // ── Debounce search ─────────────────────────────────────────────────────
+  // ── Debounce search ──────────────────────────────────────────────────────
 
   useEffect(() => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
@@ -169,10 +186,9 @@ export default function WebsiteReviewPage() {
     }, 350);
   }, [search]);
 
-  // Reset page on filter change
   useEffect(() => {
     setPage(1);
-  }, [filterReviewStatus, filterSystemStatus, filterMonth, sort]);
+  }, [filterReviewStatus, filterSystemStatus, filterSiteType, filterMonth, sort]);
 
   // ── Fetch ────────────────────────────────────────────────────────────────
 
@@ -183,6 +199,7 @@ export default function WebsiteReviewPage() {
         search: debouncedSearch,
         reviewStatus: filterReviewStatus,
         systemStatus: filterSystemStatus,
+        siteType: filterSiteType,
         month: filterMonth,
         sort,
         page: String(page),
@@ -195,10 +212,11 @@ export default function WebsiteReviewPage() {
       setTotal(json.total ?? 0);
       setTotalPages(json.totalPages ?? 1);
       setSummary(json.summary ?? EMPTY_SUMMARY);
+      setPayment(json.payment ?? EMPTY_PAYMENT);
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, filterReviewStatus, filterSystemStatus, filterMonth, sort, page]);
+  }, [debouncedSearch, filterReviewStatus, filterSystemStatus, filterSiteType, filterMonth, sort, page]);
 
   useEffect(() => {
     if (!authLoading) fetchData();
@@ -206,8 +224,7 @@ export default function WebsiteReviewPage() {
 
   // ── Selection helpers ────────────────────────────────────────────────────
 
-  const allSelected =
-    items.length > 0 && items.every((i) => selectedIds.has(i.id));
+  const allSelected = items.length > 0 && items.every((i) => selectedIds.has(i.id));
 
   const toggleAll = () => {
     if (allSelected) {
@@ -249,14 +266,10 @@ export default function WebsiteReviewPage() {
         : String(item?.review_comments ?? "").trim();
 
     if (
-      (effectiveStatus === "Rejected" ||
-        effectiveStatus === "Needs Changes") &&
+      (effectiveStatus === "Rejected" || effectiveStatus === "Needs Changes") &&
       !effectiveComments
     ) {
-      toast(
-        `Review comments are required for "${effectiveStatus}" status`,
-        "error"
-      );
+      toast(`Review comments are required for "${effectiveStatus}" status`, "error");
       return false;
     }
 
@@ -269,7 +282,7 @@ export default function WebsiteReviewPage() {
     if (res.ok) {
       const updated = await res.json();
       setItems((prev) => prev.map((i) => (i.id === id ? updated : i)));
-      fetchData(); // refresh summary counts
+      fetchData();
       return true;
     } else {
       const err = await res.json();
@@ -291,12 +304,13 @@ export default function WebsiteReviewPage() {
       const res = await fetch("/api/vault/reviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ domain: newDomain, userEmail: user?.email }),
+        body: JSON.stringify({ domain: newDomain, site_type: newSiteType, userEmail: user?.email }),
       });
       if (res.ok) {
         toast("Domain added successfully");
         setShowAddDialog(false);
         setNewDomain("");
+        setNewSiteType("External");
         setPage(1);
         fetchData();
       } else {
@@ -314,9 +328,7 @@ export default function WebsiteReviewPage() {
     if (!deleteTarget) return;
     setDeleteLoading(true);
     try {
-      const res = await fetch(`/api/vault/reviews/${deleteTarget.id}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(`/api/vault/reviews/${deleteTarget.id}`, { method: "DELETE" });
       if (res.ok) {
         toast("Domain deleted");
         setDeleteTarget(null);
@@ -348,9 +360,7 @@ export default function WebsiteReviewPage() {
 
     if (res.ok) {
       const result = await res.json();
-      toast(
-        `Updated ${result.affected} domain${result.affected !== 1 ? "s" : ""}`
-      );
+      toast(`Updated ${result.affected} domain${result.affected !== 1 ? "s" : ""}`);
       setSelectedIds(new Set());
       setBulkReviewStatus("");
       setBulkSystemStatus("");
@@ -401,7 +411,6 @@ export default function WebsiteReviewPage() {
 
   // ── Formatters ───────────────────────────────────────────────────────────
 
-  // Generate last 24 months as options for month filter
   const monthOptions = (() => {
     const options: { value: string; label: string }[] = [];
     const now = new Date();
@@ -417,9 +426,7 @@ export default function WebsiteReviewPage() {
   const fmtDate = (d: string) => {
     if (!d) return "—";
     return new Date(d).toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
+      day: "2-digit", month: "short", year: "numeric",
     });
   };
 
@@ -428,12 +435,17 @@ export default function WebsiteReviewPage() {
 
   const fmtDateTime = (d: string) =>
     new Date(d).toLocaleString("en-GB", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
+      day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
     });
+
+  const fmtMonth = (m: string) => {
+    if (!m) return "";
+    const [y, mo] = m.split("-").map(Number);
+    return new Date(y, mo - 1, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+  };
+
+  const fmtRupees = (n: number) =>
+    new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n);
 
   // ── Render ───────────────────────────────────────────────────────────────
 
@@ -452,9 +464,7 @@ export default function WebsiteReviewPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Website Review</h1>
-          <p className="text-sm text-gray-400 mt-0.5">
-            Manage websites and their review status
-          </p>
+          <p className="text-sm text-gray-400 mt-0.5">Manage websites and their review status</p>
         </div>
         <button
           onClick={() => setShowAddDialog(true)}
@@ -465,55 +475,51 @@ export default function WebsiteReviewPage() {
         </button>
       </div>
 
+      {/* ── Yashvi Payment Card ── */}
+      {payment.total > 0 || payment.internalCount > 0 || payment.externalCount > 0 ? (
+        <div className="mb-5 rounded-xl border border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50 p-4 flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-600">
+              <IndianRupee className="h-4 w-4 text-white" />
+            </div>
+            <div>
+              <p className="text-xs text-purple-600 font-medium">Yashvi — {fmtMonth(payment.month)}</p>
+              <p className="text-2xl font-bold text-purple-900">{fmtRupees(payment.total)}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 ml-2 text-sm text-purple-700">
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-2 h-2 rounded-full bg-purple-500" />
+              {payment.internalCount} Internal × ₹1,500
+            </span>
+            <span className="text-purple-300">·</span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-2 h-2 rounded-full bg-teal-400" />
+              {payment.externalCount} External × ₹500
+            </span>
+          </div>
+          {!filterMonth && (
+            <p className="text-xs text-purple-400 ml-auto">Current month</p>
+          )}
+        </div>
+      ) : null}
+
       {/* ── Summary Cards ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
         {(
           [
-            {
-              label: "Total",
-              value: summary.total,
-              cls: "border-gray-200 bg-white",
-            },
-            {
-              label: "Pending Review",
-              value: summary.pendingReview,
-              cls: "border-yellow-200 bg-yellow-50",
-            },
-            {
-              label: "Approved",
-              value: summary.approved,
-              cls: "border-green-200 bg-green-50",
-            },
-            {
-              label: "Rejected",
-              value: summary.rejected,
-              cls: "border-red-200 bg-red-50",
-            },
-            {
-              label: "Needs Changes",
-              value: summary.needsChanges,
-              cls: "border-orange-200 bg-orange-50",
-            },
-            {
-              label: "Added to System",
-              value: summary.addedToSystem,
-              cls: "border-blue-200 bg-blue-50",
-            },
-            {
-              label: "Not Added",
-              value: summary.notAddedToSystem,
-              cls: "border-gray-200 bg-gray-50",
-            },
+            { label: "Total", value: summary.total, cls: "border-gray-200 bg-white" },
+            { label: "Pending Review", value: summary.pendingReview, cls: "border-yellow-200 bg-yellow-50" },
+            { label: "Approved", value: summary.approved, cls: "border-green-200 bg-green-50" },
+            { label: "Rejected", value: summary.rejected, cls: "border-red-200 bg-red-50" },
+            { label: "Needs Changes", value: summary.needsChanges, cls: "border-orange-200 bg-orange-50" },
+            { label: "Added to System", value: summary.addedToSystem, cls: "border-blue-200 bg-blue-50" },
+            { label: "Not Added", value: summary.notAddedToSystem, cls: "border-gray-200 bg-gray-50" },
           ] as { label: string; value: number; cls: string }[]
         ).map((card) => (
-          <div
-            key={card.label}
-            className={`rounded-xl border p-3 ${card.cls}`}
-          >
+          <div key={card.label} className={`rounded-xl border p-3 ${card.cls}`}>
             <p className="text-xs text-gray-500 leading-tight">{card.label}</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">
-              {card.value}
-            </p>
+            <p className="text-2xl font-bold text-gray-900 mt-1">{card.value}</p>
           </div>
         ))}
       </div>
@@ -536,11 +542,7 @@ export default function WebsiteReviewPage() {
           className="text-sm border rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900/20"
         >
           <option value="">All Review Statuses</option>
-          {REVIEW_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
+          {REVIEW_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
         <select
           value={filterSystemStatus}
@@ -548,11 +550,15 @@ export default function WebsiteReviewPage() {
           className="text-sm border rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900/20"
         >
           <option value="">All System Statuses</option>
-          {SYSTEM_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
+          {SYSTEM_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select
+          value={filterSiteType}
+          onChange={(e) => setFilterSiteType(e.target.value)}
+          className="text-sm border rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900/20"
+        >
+          <option value="">All Site Types</option>
+          {SITE_TYPES.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
         <select
           value={filterMonth}
@@ -560,11 +566,7 @@ export default function WebsiteReviewPage() {
           className="text-sm border rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900/20"
         >
           <option value="">All Months</option>
-          {monthOptions.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
+          {monthOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
         <select
           value={sort}
@@ -574,12 +576,13 @@ export default function WebsiteReviewPage() {
           <option value="newest">Newest First</option>
           <option value="oldest">Oldest First</option>
         </select>
-        {(filterReviewStatus || filterSystemStatus || filterMonth || debouncedSearch) && (
+        {(filterReviewStatus || filterSystemStatus || filterSiteType || filterMonth || debouncedSearch) && (
           <button
             onClick={() => {
               setSearch("");
               setFilterReviewStatus("");
               setFilterSystemStatus("");
+              setFilterSiteType("");
               setFilterMonth("");
             }}
             className="text-xs text-gray-500 hover:text-gray-900 flex items-center gap-1"
@@ -593,12 +596,8 @@ export default function WebsiteReviewPage() {
       {/* ── Bulk Actions Bar ── */}
       {selectedIds.size > 0 && (
         <div className="flex flex-wrap items-center gap-3 mb-3 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-xl">
-          <span className="text-sm font-semibold text-blue-800">
-            {selectedIds.size} selected
-          </span>
-
+          <span className="text-sm font-semibold text-blue-800">{selectedIds.size} selected</span>
           <div className="flex flex-wrap items-center gap-2 ml-auto">
-            {/* Bulk Review Status */}
             <div className="flex items-center gap-1">
               <select
                 value={bulkReviewStatus}
@@ -606,25 +605,17 @@ export default function WebsiteReviewPage() {
                 className="text-xs border rounded-lg px-2 py-1.5 bg-white"
               >
                 <option value="">Set Review Status…</option>
-                {REVIEW_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
+                {REVIEW_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
               {bulkReviewStatus && (
                 <button
-                  onClick={() =>
-                    handleBulkAction("update_review_status", bulkReviewStatus)
-                  }
+                  onClick={() => handleBulkAction("update_review_status", bulkReviewStatus)}
                   className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                 >
                   Apply
                 </button>
               )}
             </div>
-
-            {/* Bulk System Status */}
             <div className="flex items-center gap-1">
               <select
                 value={bulkSystemStatus}
@@ -632,31 +623,21 @@ export default function WebsiteReviewPage() {
                 className="text-xs border rounded-lg px-2 py-1.5 bg-white"
               >
                 <option value="">Set System Status…</option>
-                {SYSTEM_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
+                {SYSTEM_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
               {bulkSystemStatus && (
                 <button
-                  onClick={() =>
-                    handleBulkAction("update_system_status", bulkSystemStatus)
-                  }
+                  onClick={() => handleBulkAction("update_system_status", bulkSystemStatus)}
                   className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                 >
                   Apply
                 </button>
               )}
             </div>
-
-            {/* Bulk Delete (admin only) */}
             {role === "admin" &&
               (bulkDeleteConfirm ? (
                 <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-red-600 font-medium">
-                    Delete {selectedIds.size} domains?
-                  </span>
+                  <span className="text-xs text-red-600 font-medium">Delete {selectedIds.size} domains?</span>
                   <button
                     onClick={() => handleBulkAction("delete")}
                     className="text-xs px-2.5 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700"
@@ -679,12 +660,8 @@ export default function WebsiteReviewPage() {
                   Delete selected
                 </button>
               ))}
-
             <button
-              onClick={() => {
-                setSelectedIds(new Set());
-                setBulkDeleteConfirm(false);
-              }}
+              onClick={() => { setSelectedIds(new Set()); setBulkDeleteConfirm(false); }}
               className="text-xs px-2.5 py-1.5 border rounded-lg hover:bg-white text-gray-600"
             >
               Clear
@@ -700,45 +677,31 @@ export default function WebsiteReviewPage() {
             <thead>
               <tr className="bg-gray-50 border-b">
                 <th className="w-10 px-4 py-3 text-center">
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    onChange={toggleAll}
-                    className="rounded cursor-pointer"
-                  />
+                  <input type="checkbox" checked={allSelected} onChange={toggleAll} className="rounded cursor-pointer" />
                 </th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600 min-w-[180px]">
-                  Domain
-                </th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600 min-w-[150px]">
-                  Review Status
-                </th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600 min-w-[160px]">
-                  System Status
-                </th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600 whitespace-nowrap">
-                  Date Added
-                </th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600 min-w-[200px]">
-                  Review Comments
-                </th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600 min-w-[180px]">Domain</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600 min-w-[110px]">Site Type</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600 min-w-[150px]">Review Status</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600 min-w-[160px]">System Status</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600 whitespace-nowrap">Date Added</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600 min-w-[200px]">Review Comments</th>
                 <th className="px-4 py-3 w-20" />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="py-20 text-center">
+                  <td colSpan={8} className="py-20 text-center">
                     <Loader2 className="h-6 w-6 animate-spin text-gray-400 mx-auto" />
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-20 text-center text-gray-400">
+                  <td colSpan={8} className="py-20 text-center text-gray-400">
                     <Globe className="h-10 w-10 mx-auto mb-3 text-gray-200" />
                     <p className="font-medium">No domains found</p>
                     <p className="text-xs mt-1">
-                      {debouncedSearch || filterReviewStatus || filterSystemStatus || filterMonth
+                      {debouncedSearch || filterReviewStatus || filterSystemStatus || filterSiteType || filterMonth
                         ? "Try adjusting your filters"
                         : "Click \"Add Domain\" to get started"}
                     </p>
@@ -748,9 +711,7 @@ export default function WebsiteReviewPage() {
                 items.map((item) => (
                   <tr
                     key={item.id}
-                    className={`hover:bg-gray-50/60 transition-colors ${
-                      selectedIds.has(item.id) ? "bg-blue-50/40" : ""
-                    }`}
+                    className={`hover:bg-gray-50/60 transition-colors ${selectedIds.has(item.id) ? "bg-blue-50/40" : ""}`}
                   >
                     {/* Checkbox */}
                     <td className="px-4 py-3 text-center">
@@ -769,9 +730,7 @@ export default function WebsiteReviewPage() {
                           <input
                             type="text"
                             value={editingDomainText}
-                            onChange={(e) =>
-                              setEditingDomainText(e.target.value)
-                            }
+                            onChange={(e) => setEditingDomainText(e.target.value)}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") saveDomain(item.id);
                               if (e.key === "Escape") setEditingDomainId(null);
@@ -779,39 +738,38 @@ export default function WebsiteReviewPage() {
                             className="border rounded px-2 py-0.5 text-sm w-44 focus:outline-none focus:ring-2 focus:ring-gray-900/20"
                             autoFocus
                           />
-                          <button
-                            onClick={() => saveDomain(item.id)}
-                            className="text-green-600 hover:text-green-700"
-                          >
+                          <button onClick={() => saveDomain(item.id)} className="text-green-600 hover:text-green-700">
                             <Check className="h-3.5 w-3.5" />
                           </button>
-                          <button
-                            onClick={() => setEditingDomainId(null)}
-                            className="text-gray-400 hover:text-gray-600"
-                          >
+                          <button onClick={() => setEditingDomainId(null)} className="text-gray-400 hover:text-gray-600">
                             <X className="h-3.5 w-3.5" />
                           </button>
                         </div>
                       ) : (
                         <span
-                          className={
-                            role === "admin"
-                              ? "cursor-pointer hover:underline underline-offset-2"
-                              : ""
-                          }
+                          className={role === "admin" ? "cursor-pointer hover:underline underline-offset-2" : ""}
                           onDoubleClick={() => {
                             if (role === "admin") {
                               setEditingDomainId(item.id);
                               setEditingDomainText(item.domain);
                             }
                           }}
-                          title={
-                            role === "admin" ? "Double-click to edit" : undefined
-                          }
+                          title={role === "admin" ? "Double-click to edit" : undefined}
                         >
                           {item.domain}
                         </span>
                       )}
+                    </td>
+
+                    {/* Site Type */}
+                    <td className="px-4 py-3">
+                      <select
+                        value={item.site_type ?? "External"}
+                        onChange={(e) => updateItem(item.id, { site_type: e.target.value }, item)}
+                        className={`text-xs font-medium rounded-full px-2.5 py-1 border-0 cursor-pointer appearance-none focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-gray-900/20 ${siteTypeStyle[item.site_type ?? "External"]}`}
+                      >
+                        {SITE_TYPES.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
                     </td>
 
                     {/* Review Status */}
@@ -820,33 +778,18 @@ export default function WebsiteReviewPage() {
                         value={item.review_status}
                         onChange={async (e) => {
                           const newStatus = e.target.value;
-                          // Check if comments are needed
                           if (
-                            (newStatus === "Rejected" ||
-                              newStatus === "Needs Changes") &&
+                            (newStatus === "Rejected" || newStatus === "Needs Changes") &&
                             !item.review_comments?.trim()
                           ) {
-                            toast(
-                              `Add review comments before setting "${newStatus}"`,
-                              "error"
-                            );
+                            toast(`Add review comments before setting "${newStatus}"`, "error");
                             return;
                           }
-                          await updateItem(
-                            item.id,
-                            { review_status: newStatus },
-                            item
-                          );
+                          await updateItem(item.id, { review_status: newStatus }, item);
                         }}
-                        className={`text-xs font-medium rounded-full px-2.5 py-1 border-0 cursor-pointer appearance-none focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-gray-900/20 ${
-                          reviewStatusStyle[item.review_status]
-                        }`}
+                        className={`text-xs font-medium rounded-full px-2.5 py-1 border-0 cursor-pointer appearance-none focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-gray-900/20 ${reviewStatusStyle[item.review_status]}`}
                       >
-                        {REVIEW_STATUSES.map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
+                        {REVIEW_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </td>
 
@@ -854,29 +797,15 @@ export default function WebsiteReviewPage() {
                     <td className="px-4 py-3">
                       <select
                         value={item.system_status}
-                        onChange={(e) =>
-                          updateItem(
-                            item.id,
-                            { system_status: e.target.value },
-                            item
-                          )
-                        }
-                        className={`text-xs font-medium rounded-full px-2.5 py-1 border-0 cursor-pointer appearance-none focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-gray-900/20 ${
-                          systemStatusStyle[item.system_status]
-                        }`}
+                        onChange={(e) => updateItem(item.id, { system_status: e.target.value }, item)}
+                        className={`text-xs font-medium rounded-full px-2.5 py-1 border-0 cursor-pointer appearance-none focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-gray-900/20 ${systemStatusStyle[item.system_status]}`}
                       >
-                        {SYSTEM_STATUSES.map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
+                        {SYSTEM_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </td>
 
                     {/* Date Added */}
-                    <td className="px-4 py-3 text-gray-500 whitespace-nowrap text-xs">
-                      {fmtDate(item.date_added)}
-                    </td>
+                    <td className="px-4 py-3 text-gray-500 whitespace-nowrap text-xs">{fmtDate(item.date_added)}</td>
 
                     {/* Review Comments */}
                     <td className="px-4 py-3 max-w-xs">
@@ -884,9 +813,7 @@ export default function WebsiteReviewPage() {
                         <div className="flex flex-col gap-1.5">
                           <textarea
                             value={editingCommentText}
-                            onChange={(e) =>
-                              setEditingCommentText(e.target.value)
-                            }
+                            onChange={(e) => setEditingCommentText(e.target.value)}
                             rows={3}
                             placeholder="Add your comments here…"
                             className="border rounded-lg px-2 py-1.5 text-xs resize-none w-full focus:outline-none focus:ring-2 focus:ring-gray-900/20"
@@ -916,13 +843,7 @@ export default function WebsiteReviewPage() {
                           }}
                           title="Click to edit"
                         >
-                          <span
-                            className={`text-xs leading-relaxed line-clamp-2 ${
-                              item.review_comments
-                                ? "text-gray-600"
-                                : "text-gray-300 italic"
-                            }`}
-                          >
+                          <span className={`text-xs leading-relaxed line-clamp-2 ${item.review_comments ? "text-gray-600" : "text-gray-300 italic"}`}>
                             {item.review_comments || "Click to add…"}
                           </span>
                           <Edit2 className="h-3 w-3 text-gray-300 group-hover:text-gray-500 shrink-0 mt-0.5" />
@@ -966,10 +887,7 @@ export default function WebsiteReviewPage() {
             <span>
               {total === 0
                 ? "No results"
-                : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(
-                    page * PAGE_SIZE,
-                    total
-                  )} of ${total}`}
+                : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, total)} of ${total}`}
             </span>
             {totalPages > 1 && (
               <div className="flex items-center gap-2">
@@ -980,9 +898,7 @@ export default function WebsiteReviewPage() {
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
-                <span className="text-xs">
-                  Page {page} of {totalPages}
-                </span>
+                <span className="text-xs">Page {page} of {totalPages}</span>
                 <button
                   disabled={page === totalPages}
                   onClick={() => setPage((p) => p + 1)}
@@ -1000,38 +916,47 @@ export default function WebsiteReviewPage() {
       {showAddDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-1">
-              Add New Domain
-            </h2>
-            <p className="text-sm text-gray-500 mb-5">
-              Enter the website domain. Protocol and www will be stripped
-              automatically.
-            </p>
+            <h2 className="text-lg font-semibold text-gray-900 mb-1">Add New Domain</h2>
+            <p className="text-sm text-gray-500 mb-5">Protocol and www will be stripped automatically.</p>
             <input
               type="text"
               placeholder="e.g. example.com or https://www.example.com"
               value={newDomain}
-              onChange={(e) => {
-                setNewDomain(e.target.value);
-                setAddError("");
-              }}
+              onChange={(e) => { setNewDomain(e.target.value); setAddError(""); }}
               onKeyDown={(e) => e.key === "Enter" && handleAddDomain()}
-              className="w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/20 mb-1"
+              className="w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/20 mb-4"
               autoFocus
             />
+            {/* Site Type selector */}
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-gray-600 mb-2">Site Type</label>
+              <div className="flex gap-2">
+                {SITE_TYPES.map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setNewSiteType(t as "Internal" | "External")}
+                    className={`flex-1 py-2 text-sm font-medium rounded-xl border transition-colors ${
+                      newSiteType === t
+                        ? t === "Internal"
+                          ? "bg-purple-600 text-white border-purple-600"
+                          : "bg-teal-600 text-white border-teal-600"
+                        : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    {t} {t === "Internal" ? "· ₹1,500" : "· ₹500"}
+                  </button>
+                ))}
+              </div>
+            </div>
             {addError && (
               <p className="text-xs text-red-600 mb-3 flex items-center gap-1">
                 <AlertCircle className="h-3 w-3" />
                 {addError}
               </p>
             )}
-            <div className="flex gap-2 justify-end mt-5">
+            <div className="flex gap-2 justify-end">
               <button
-                onClick={() => {
-                  setShowAddDialog(false);
-                  setNewDomain("");
-                  setAddError("");
-                }}
+                onClick={() => { setShowAddDialog(false); setNewDomain(""); setAddError(""); setNewSiteType("External"); }}
                 className="px-4 py-2 text-sm border rounded-xl hover:bg-gray-50"
               >
                 Cancel
@@ -1041,9 +966,7 @@ export default function WebsiteReviewPage() {
                 disabled={addLoading}
                 className="px-4 py-2 text-sm bg-gray-900 text-white rounded-xl hover:bg-gray-700 disabled:opacity-60 flex items-center gap-2"
               >
-                {addLoading && (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                )}
+                {addLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 Add Domain
               </button>
             </div>
@@ -1060,21 +983,14 @@ export default function WebsiteReviewPage() {
                 <AlertCircle className="h-5 w-5 text-red-600" />
               </div>
               <div>
-                <h2 className="text-base font-semibold text-gray-900">
-                  Delete Domain
-                </h2>
+                <h2 className="text-base font-semibold text-gray-900">Delete Domain</h2>
                 <p className="text-sm text-gray-500 mt-0.5">
-                  Are you sure you want to delete{" "}
-                  <strong>{deleteTarget.domain}</strong>? This action cannot be
-                  undone.
+                  Are you sure you want to delete <strong>{deleteTarget.domain}</strong>? This cannot be undone.
                 </p>
               </div>
             </div>
             <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setDeleteTarget(null)}
-                className="px-4 py-2 text-sm border rounded-xl hover:bg-gray-50"
-              >
+              <button onClick={() => setDeleteTarget(null)} className="px-4 py-2 text-sm border rounded-xl hover:bg-gray-50">
                 Cancel
               </button>
               <button
@@ -1082,9 +998,7 @@ export default function WebsiteReviewPage() {
                 disabled={deleteLoading}
                 className="px-4 py-2 text-sm bg-red-600 text-white rounded-xl hover:bg-red-700 disabled:opacity-60 flex items-center gap-2"
               >
-                {deleteLoading && (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                )}
+                {deleteLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 Delete
               </button>
             </div>
@@ -1095,22 +1009,14 @@ export default function WebsiteReviewPage() {
       {/* ── Audit Log Drawer ── */}
       {auditItem && (
         <div className="fixed inset-0 z-50 flex justify-end">
-          <div
-            className="absolute inset-0 bg-black/30"
-            onClick={() => setAuditItem(null)}
-          />
+          <div className="absolute inset-0 bg-black/30" onClick={() => setAuditItem(null)} />
           <div className="relative bg-white w-full max-w-md h-full shadow-2xl flex flex-col">
             <div className="flex items-start justify-between p-5 border-b">
               <div>
                 <h2 className="font-semibold text-gray-900">Audit Log</h2>
-                <p className="text-xs text-gray-400 mt-0.5 font-mono">
-                  {auditItem.domain}
-                </p>
+                <p className="text-xs text-gray-400 mt-0.5 font-mono">{auditItem.domain}</p>
               </div>
-              <button
-                onClick={() => setAuditItem(null)}
-                className="text-gray-400 hover:text-gray-700 mt-0.5"
-              >
+              <button onClick={() => setAuditItem(null)} className="text-gray-400 hover:text-gray-700 mt-0.5">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -1123,36 +1029,24 @@ export default function WebsiteReviewPage() {
                 <div className="text-center py-16 text-gray-400">
                   <Clock className="h-8 w-8 mx-auto mb-3 text-gray-200" />
                   <p className="text-sm font-medium">No history yet</p>
-                  <p className="text-xs mt-1">
-                    Changes will appear here
-                  </p>
+                  <p className="text-xs mt-1">Changes will appear here</p>
                 </div>
               ) : (
                 <div className="relative">
-                  {/* Timeline line */}
                   <div className="absolute left-[7px] top-2 bottom-0 w-px bg-gray-200" />
                   <div className="space-y-0">
-                    {auditLogs.map((log, idx) => (
+                    {auditLogs.map((log) => (
                       <div key={log.id} className="flex gap-4 pb-5">
-                        {/* Dot */}
                         <div className="shrink-0 mt-1.5 z-10">
                           <div className="h-3.5 w-3.5 rounded-full bg-white border-2 border-gray-400" />
                         </div>
-                        {/* Content */}
                         <div className="flex-1 min-w-0">
                           <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                            <span className="text-xs font-semibold text-gray-900">
-                              {log.user_email}
-                            </span>
-                            <span className="text-[10px] text-gray-400">
-                              {fmtDateTime(log.changed_at)}
-                            </span>
+                            <span className="text-xs font-semibold text-gray-900">{log.user_email}</span>
+                            <span className="text-[10px] text-gray-400">{fmtDateTime(log.changed_at)}</span>
                           </div>
                           <p className="text-xs text-gray-600 mb-1.5">
-                            Updated{" "}
-                            <span className="font-medium text-gray-800">
-                              {fmtField(log.field_changed)}
-                            </span>
+                            Updated <span className="font-medium text-gray-800">{fmtField(log.field_changed)}</span>
                           </p>
                           <div className="flex flex-wrap items-center gap-1.5">
                             {log.previous_value !== null && (
@@ -1187,11 +1081,7 @@ export default function WebsiteReviewPage() {
               t.type === "success" ? "bg-gray-900" : "bg-red-600"
             }`}
           >
-            {t.type === "success" ? (
-              <Check className="h-4 w-4 shrink-0" />
-            ) : (
-              <AlertCircle className="h-4 w-4 shrink-0" />
-            )}
+            {t.type === "success" ? <Check className="h-4 w-4 shrink-0" /> : <AlertCircle className="h-4 w-4 shrink-0" />}
             {t.message}
           </div>
         ))}

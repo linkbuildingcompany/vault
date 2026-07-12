@@ -46,6 +46,14 @@ function stripSignature(text: string): string {
 function sanitize(text: string): string {
   if (!text) return text;
 
+  // 0. Strip all images before anything else
+  text = text.replace(/<img\b[^>]*\/?>/gi, "");                                          // <img> tags
+  text = text.replace(/<picture\b[^>]*>[\s\S]*?<\/picture>/gi, "");                      // <picture> elements
+  text = text.replace(/<figure\b[^>]*>[\s\S]*?<\/figure>/gi, "");                        // <figure> elements
+  text = text.replace(/src=["']cid:[^"']*["']/gi, 'src=""');                             // CID inline embeds
+  text = text.replace(/data:image\/[^;]+;base64,[A-Za-z0-9+/=\s]+/gi, "");              // base64 data URIs
+  text = text.replace(/\[cid:[^\]]*\]/gi, "");                                            // [cid:...] plain-text refs
+
   // 1. Strip signature block first (everything from sign-off line down)
   text = stripSignature(text);
 

@@ -1,7 +1,7 @@
 // src/app/api/vault/communications/send/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { getGmailClient, buildEmail, encodeMessage } from "@/lib/gmail";
+import { getGmailClient, buildEmailWithAttachments, encodeMessage } from "@/lib/gmail";
 
 const db = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,6 +16,7 @@ export async function POST(req: NextRequest) {
     const text = (body.body || "").trim();
     const type = (body.type || "reviewer") as "reviewer" | "outreach";
     const partnerEmail = (body.partner_email || "").trim(); // outreach only
+    const attachments: Array<{ filename: string; mimeType: string; data: string }> = body.attachments || [];
 
     if (!subject || !text) {
       return NextResponse.json({ error: "Subject and body are required" }, { status: 400 });
@@ -44,13 +45,13 @@ export async function POST(req: NextRequest) {
       if (!outreach1) {
         return NextResponse.json({ error: "Outreach Email 1 not configured. Please set it in Settings." }, { status: 400 });
       }
-      raw = buildEmail({ to: partnerEmail, cc: outreach1, from: senderEmail, subject, body: text });
+      raw = buildEmailWithAttachments({ to: partnerEmail, cc: outreach1, from: senderEmail, subject, body: text, attachments });
     } else {
       // Reviewer notification
       if (!r1) {
         return NextResponse.json({ error: "Reviewer 1 email not configured. Please set it in Settings." }, { status: 400 });
       }
-      raw = buildEmail({ to: r1, cc: r2 || undefined, from: senderEmail, subject, body: text });
+      raw = buildEmailWithAttachments({ to: r1, cc: r2 || undefined, from: senderEmail, subject, body: text, attachments });
     }
 
     const result = await gmail.users.messages.send({

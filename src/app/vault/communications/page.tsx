@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 import {
   Send, Settings, PenSquare, RefreshCw, ChevronLeft,
   Search, X, Loader2, Mail, AlertCircle, MessageSquare, Clock, Bell,
-  Users, Globe,
+  Users, Globe, Paperclip, FileImage, FileText, File as FileIcon,
 } from "lucide-react";
 
 async function getToken(): Promise<string> {
@@ -135,8 +135,10 @@ export default function CommunicationsPage() {
   const [cSubject, setCSubject] = useState("");
   const [cBody, setCBody] = useState("");
   const [cPartnerEmail, setCPartnerEmail] = useState(""); // outreach only
+  const [cAttachments, setCAttachments] = useState<Array<{ filename: string; mimeType: string; data: string; size: number }>>([]);
   const [sending, setSending] = useState(false);
   const [composeErr, setComposeErr] = useState("");
+  const attachFileRef = useRef<HTMLInputElement>(null);
 
   const [replyBody, setReplyBody] = useState("");
   const [replying, setReplying] = useState(false);
@@ -223,6 +225,46 @@ export default function CommunicationsPage() {
     fetchThread(threadId);
   };
 
+  // ── Attach files ────────────────────────────────────────────────────────────
+  const handleAttachFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const MAX_MB = 10;
+    files.forEach((file) => {
+      if (file.size > MAX_MB * 1024 * 1024) {
+        setComposeErr(`${file.name} exceeds ${MAX_MB}MB limit.`);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = (reader.result as string).split(",")[1]; // strip data:...;base64,
+        setCAttachments((prev) => [
+          ...prev,
+          { filename: file.name, mimeType: file.type || "application/octet-stream", data: base64, size: file.size },
+        ]);
+      };
+      reader.readAsDataURL(file);
+    });
+    // reset so same file can be re-selected
+    e.target.value = "";
+  };
+
+  const removeAttachment = (idx: number) => {
+    setCAttachments((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  function attachIcon(mimeType: string) {
+    if (mimeType.startsWith("image/")) return <FileImage className="h-3 w-3" />;
+    if (mimeType.includes("pdf") || mimeType.includes("text")) return <FileText className="h-3 w-3" />;
+    return <FileIcon className="h-3 w-3" />;
+  }
+
+  function fmtBytes(b: number) {
+    if (b < 1024) return `${b}B`;
+    if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)}KB`;
+    return `${(b / (1024 * 1024)).toFixed(1)}MB`;
+  }
+
   // ── Send new email ──────────────────────────────────────────────────────────
   const handleSend = async () => {
     if (!cSubject.trim() || !cBody.trim()) { setComposeErr("Subject and body are required."); return; }
@@ -231,8 +273,9 @@ export default function CommunicationsPage() {
     setComposeErr("");
     try {
       const token = await getToken();
-      const payload: Record<string, string> = { type: activeTab, subject: cSubject, body: cBody };
+      const payload: Record<string, any> = { type: activeTab, subject: cSubject, body: cBody };
       if (activeTab === "outreach") payload.partner_email = cPartnerEmail.trim();
+      if (cAttachments.length > 0) payload.attachments = cAttachments.map(({ filename, mimeType, data }) => ({ filename, mimeType, data }));
       const res = await fetch("/api/vault/communications/send", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -241,7 +284,7 @@ export default function CommunicationsPage() {
       const data = await res.json();
       if (!res.ok) { setComposeErr(data.error || "Failed to send."); return; }
       setComposeOpen(false);
-      setCSubject(""); setCBody(""); setCPartnerEmail("");
+      setCSubject(""); setCBody(""); setCPartnerEmail(""); setCAttachments([]);
       setTimeout(fetchThreads, 1500);
     } finally {
       setSending(false);
@@ -283,6 +326,8 @@ export default function CommunicationsPage() {
     }
   }, []);
 
+  // Load settings on mount so sender email is available in compose
+  useEffect(() => { loadSettings(); }, [loadSettings]);
   useEffect(() => { if (settingsOpen) loadSettings(); }, [settingsOpen, loadSettings]);
 
   const saveSettings = async () => {
@@ -616,20 +661,27 @@ export default function CommunicationsPage() {
       {composeOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-4">
           <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
+            {/* Header */}
             <div className={`flex items-center justify-between px-5 py-3 rounded-t-2xl ${activeTab === "outreach" ? "bg-orange-600" : "bg-gray-900"}`}>
               <h3 className="text-sm font-semibold text-white">
                 {activeTab === "outreach" ? "New Outreach Message" : "New Reviewer Message"}
               </h3>
-              <button onClick={() => setComposeOpen(false)} className="text-gray-300 hover:text-white">
+              <button onClick={() => { setComposeOpen(false); setCAttachments([]); }} className="text-gray-300 hover:text-white">
                 <X className="h-4 w-4" />
               </button>
             </div>
+
             <div className="flex flex-col flex-1 overflow-y-auto">
+              {/* From row */}
+              <div className="flex items-center gap-3 px-5 py-2.5 border-b bg-gray-50">
+                <span className="text-xs text-gray-400 w-8 flex-shrink-0">From</span>
+                <span className="text-xs text-gray-600 font-medium">{senderEmailVal || "ravi.soni4254@gmail.com"}</span>
+              </div>
+
               {activeTab === "outreach" ? (
                 <>
-                  {/* Outreach: To = typed partner email */}
                   <div className="flex items-center gap-3 px-5 py-2.5 border-b">
-                    <span className="text-xs text-gray-400 w-6 flex-shrink-0">To</span>
+                    <span className="text-xs text-gray-400 w-8 flex-shrink-0">To</span>
                     <input
                       type="email"
                       value={cPartnerEmail}
@@ -640,23 +692,23 @@ export default function CommunicationsPage() {
                     />
                   </div>
                   <div className="flex items-center gap-3 px-5 py-2.5 border-b">
-                    <span className="text-xs text-gray-400 w-6 flex-shrink-0">CC</span>
+                    <span className="text-xs text-gray-400 w-8 flex-shrink-0">CC</span>
                     <span className="text-xs font-semibold bg-orange-100 text-orange-800 px-2.5 py-1 rounded-full">Outreach Email 1</span>
                   </div>
                 </>
               ) : (
                 <>
-                  {/* Reviewer: fixed TO/CC */}
                   <div className="flex items-center gap-3 px-5 py-2.5 border-b">
-                    <span className="text-xs text-gray-400 w-6">To</span>
+                    <span className="text-xs text-gray-400 w-8">To</span>
                     <span className="text-xs font-semibold bg-blue-100 text-blue-800 px-2.5 py-1 rounded-full">Reviewer 1</span>
                   </div>
                   <div className="flex items-center gap-3 px-5 py-2.5 border-b">
-                    <span className="text-xs text-gray-400 w-6">CC</span>
+                    <span className="text-xs text-gray-400 w-8">CC</span>
                     <span className="text-xs font-semibold bg-purple-100 text-purple-800 px-2.5 py-1 rounded-full">Reviewer 2</span>
                   </div>
                 </>
               )}
+
               <input
                 value={cSubject}
                 onChange={(e) => setCSubject(e.target.value)}
@@ -668,14 +720,54 @@ export default function CommunicationsPage() {
                 value={cBody}
                 onChange={(e) => setCBody(e.target.value)}
                 placeholder="Write your message…"
-                rows={10}
+                rows={9}
                 className="flex-1 px-5 py-4 text-sm text-gray-700 focus:outline-none resize-none placeholder:text-gray-400"
               />
+
+              {/* Attachment chips */}
+              {cAttachments.length > 0 && (
+                <div className="px-5 py-2 border-t flex flex-wrap gap-2">
+                  {cAttachments.map((att, i) => (
+                    <div key={i} className="flex items-center gap-1.5 bg-gray-100 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-700">
+                      {attachIcon(att.mimeType)}
+                      <span className="max-w-[140px] truncate">{att.filename}</span>
+                      <span className="text-gray-400">({fmtBytes(att.size)})</span>
+                      <button onClick={() => removeAttachment(i)} className="ml-1 text-gray-400 hover:text-red-500">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
+
+            {/* Footer */}
             <div className="flex items-center justify-between px-5 py-3 border-t bg-gray-50">
-              {composeErr ? <p className="text-xs text-red-600">{composeErr}</p> : <span />}
               <div className="flex items-center gap-2">
-                <button onClick={() => { setComposeOpen(false); setCPartnerEmail(""); }} className="text-sm text-gray-500 hover:text-gray-700 px-3 py-1.5">Discard</button>
+                {/* Paperclip / attach */}
+                <button
+                  type="button"
+                  onClick={() => attachFileRef.current?.click()}
+                  className="flex items-center gap-1.5 text-gray-500 hover:text-gray-800 text-xs px-2 py-1.5 rounded-lg hover:bg-gray-200 transition-colors"
+                  title="Attach files"
+                >
+                  <Paperclip className="h-4 w-4" />
+                  {cAttachments.length > 0 && (
+                    <span className="font-semibold text-blue-600">{cAttachments.length}</span>
+                  )}
+                </button>
+                <input
+                  ref={attachFileRef}
+                  type="file"
+                  multiple
+                  accept="image/*,.pdf,.doc,.docx,.txt,.csv,.xlsx,.xls,.png,.jpg,.jpeg,.gif,.webp"
+                  className="hidden"
+                  onChange={handleAttachFiles}
+                />
+                {composeErr && <p className="text-xs text-red-600">{composeErr}</p>}
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => { setComposeOpen(false); setCPartnerEmail(""); setCAttachments([]); setComposeErr(""); }} className="text-sm text-gray-500 hover:text-gray-700 px-3 py-1.5">Discard</button>
                 <button
                   onClick={handleSend}
                   disabled={!cSubject.trim() || !cBody.trim() || sending}
@@ -684,7 +776,7 @@ export default function CommunicationsPage() {
                   }`}
                 >
                   {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  Send
+                  Send{cAttachments.length > 0 ? ` + ${cAttachments.length} file${cAttachments.length > 1 ? "s" : ""}` : ""}
                 </button>
               </div>
             </div>

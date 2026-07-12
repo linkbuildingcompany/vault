@@ -12,12 +12,13 @@ export async function GET() {
   try {
     const { data, error } = await db.from("reviewer_settings").select("*").eq("id", 1).single();
     if (error || !data) {
-      return NextResponse.json({ sender_email: "", reviewer_1_email: "", reviewer_2_email: "" });
+      return NextResponse.json({ sender_email: "", reviewer_1_email: "", reviewer_2_email: "", outreach_email_1: "" });
     }
     return NextResponse.json({
       sender_email: data.sender_email || "",
       reviewer_1_email: data.reviewer_1_email || "",
       reviewer_2_email: data.reviewer_2_email || "",
+      outreach_email_1: data.outreach_email_1 || "",
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -30,17 +31,28 @@ export async function POST(req: NextRequest) {
     const reviewer_1_email = (body.reviewer_1_email || "").trim();
     const reviewer_2_email = (body.reviewer_2_email || "").trim();
     const sender_email = (body.sender_email || "").trim();
+    const outreach_email_1 = (body.outreach_email_1 || "").trim();
 
-    // Try with sender_email first; fall back without it if column missing
+    // Try with all columns; fall back progressively if columns are missing
     let { error } = await db.from("reviewer_settings").upsert({
-      id: 1, reviewer_1_email, reviewer_2_email, sender_email,
+      id: 1, reviewer_1_email, reviewer_2_email, sender_email, outreach_email_1,
     });
+
+    if (error?.message?.includes("outreach_email_1")) {
+      // Column doesn't exist yet — retry without it
+      const r2 = await db.from("reviewer_settings").upsert({
+        id: 1, reviewer_1_email, reviewer_2_email, sender_email,
+      });
+      error = r2.error;
+    }
+
     if (error?.message?.includes("sender_email")) {
-      const result = await db.from("reviewer_settings").upsert({
+      const r3 = await db.from("reviewer_settings").upsert({
         id: 1, reviewer_1_email, reviewer_2_email,
       });
-      error = result.error;
+      error = r3.error;
     }
+
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ success: true });
   } catch (err: any) {

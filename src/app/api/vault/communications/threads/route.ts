@@ -13,18 +13,30 @@ function getHeader(headers: { name: string; value: string }[], name: string): st
   return headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value || "";
 }
 
-function maskSender(from: string, r1: string, r2: string): string {
+function maskSender(
+  from: string,
+  r1: string,
+  r2: string,
+  senderEmail: string,
+  outreach1: string,
+  type: "reviewer" | "outreach"
+): string {
   const lower = from.toLowerCase();
-  if (r1 && lower.includes(r1.toLowerCase())) return "Reviewer 1";
-  if (r2 && lower.includes(r2.toLowerCase())) return "Reviewer 2";
-  return "You";
+  if (senderEmail && lower.includes(senderEmail.toLowerCase())) return "You";
+  if (type === "reviewer") {
+    if (r1 && lower.includes(r1.toLowerCase())) return "Reviewer 1";
+    if (r2 && lower.includes(r2.toLowerCase())) return "Reviewer 2";
+    return "You";
+  } else {
+    if (outreach1 && lower.includes(outreach1.toLowerCase())) return "Outreach Email 1";
+    return "Partner";
+  }
 }
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// Sign-off phrases — everything from this line onward is stripped
 const SIGNOFF_PHRASES = [
   "kind regards", "best regards", "warm regards", "many thanks",
   "thanks,", "thanks!", "thank you,", "thank you!", "regards,",
@@ -46,15 +58,15 @@ function stripSignature(text: string): string {
 function sanitize(text: string): string {
   if (!text) return text;
 
-  // 0. Strip all images before anything else
-  text = text.replace(/<img\b[^>]*\/?>/gi, "");                                          // <img> tags
-  text = text.replace(/<picture\b[^>]*>[\s\S]*?<\/picture>/gi, "");                      // <picture> elements
-  text = text.replace(/<figure\b[^>]*>[\s\S]*?<\/figure>/gi, "");                        // <figure> elements
-  text = text.replace(/src=["']cid:[^"']*["']/gi, 'src=""');                             // CID inline embeds
-  text = text.replace(/data:image\/[^;]+;base64,[A-Za-z0-9+/=\s]+/gi, "");              // base64 data URIs
-  text = text.replace(/\[cid:[^\]]*\]/gi, "");                                            // [cid:...] plain-text refs
+  // 0. Strip all images
+  text = text.replace(/<img\b[^>]*\/?>/gi, "");
+  text = text.replace(/<picture\b[^>]*>[\s\S]*?<\/picture>/gi, "");
+  text = text.replace(/<figure\b[^>]*>[\s\S]*?<\/figure>/gi, "");
+  text = text.replace(/src=["']cid:[^"']*["']/gi, 'src=""');
+  text = text.replace(/data:image\/[^;]+;base64,[A-Za-z0-9+/=\s]+/gi, "");
+  text = text.replace(/\[cid:[^\]]*\]/gi, "");
 
-  // 1. Strip signature block first (everything from sign-off line down)
+  // 1. Strip signature block (everything from sign-off line down)
   text = stripSignature(text);
 
   // 2. Blocked email addresses
@@ -62,6 +74,7 @@ function sanitize(text: string): string {
     "betty.soare@fatjoe.com",
     "jayson.sallatic@fatjoe.com",
     "valme.claro@fatjoe.com",
+    "outreach@fatjoe.com",
     "ravi@linkbuilding.company",
   ];
   for (const email of blockedEmails) {
@@ -80,29 +93,29 @@ function sanitize(text: string): string {
   text = text.replace(/\blinkbuilding\.company\b/gi, "[redacted]");
   text = text.replace(/link\s+building\s+company/gi, "[redacted]");
 
-  // 6. Phone numbers (UK, US, international formats)
+  // 6. Phone numbers
   text = text.replace(/(\+?[\d\s\-().]{7,20}(?:\s*(ext|x)\.?\s*\d{1,6})?)/g, (match) => {
     const digits = match.replace(/\D/g, "");
     if (digits.length >= 7 && digits.length <= 15) return "[redacted]";
     return match;
   });
 
-  // 7. "Website:" / "Web:" lines
+  // 7. Website lines
   text = text.replace(/^\s*(website|web|www)\s*:.*$/gim, "[redacted]");
 
-  // 8. Lines with known domains (fatjoe.com etc.)
+  // 8. Lines with fatjoe.com
   text = text.replace(/^.*\bfatjoe\.com\b.*$/gim, "[redacted]");
 
-  // 9. Physical address lines — lines with postcode/zip or street keywords
+  // 9. Physical address lines
   text = text.replace(/^.*(p\.?o\.?\s*box|\bsuite\b|\bfloor\b|\bunit\b|\broad\b|\bstreet\b|\bave\b|\bavenue\b|\blane\b|\bplace\b|\bdrive\b|[A-Z]{1,2}\d[\d\w]?\s*\d[A-Z]{2}|\b\d{5}(-\d{4})?\b).*$/gim, "[redacted]");
 
   // 10. Company registration lines
   text = text.replace(/^.*(company\s*(no|number|reg|registration)|reg(istered)?\s*(no|number)).*$/gim, "[redacted]");
 
-  // 11. Legal disclaimer paragraphs (long lines with "private", "confidential", "personal data")
+  // 11. Legal disclaimer paragraphs
   text = text.replace(/^.*(private and confidential|personal data|personal views|received this message in error|do not use, copy|disclose the information).*$/gim, "[redacted]");
 
-  // 12. Social media profile URLs
+  // 12. Social media URLs
   text = text.replace(
     /https?:\/\/(www\.)?(linkedin\.com|twitter\.com|x\.com|facebook\.com|instagram\.com|tiktok\.com|youtube\.com|t\.co|fb\.com|fb\.me|lnkd\.in|bit\.ly|ow\.ly|buff\.ly)\/\S*/gi,
     "[redacted]"
@@ -143,27 +156,38 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const search = searchParams.get("search") || "";
     const pageToken = searchParams.get("pageToken") || undefined;
+    const type = (searchParams.get("type") || "reviewer") as "reviewer" | "outreach";
 
     const { data: settings } = await db
       .from("reviewer_settings")
-      .select("reviewer_1_email, reviewer_2_email")
+      .select("*")
       .eq("id", 1)
       .single();
 
     const r1 = settings?.reviewer_1_email || "";
     const r2 = settings?.reviewer_2_email || "";
+    const senderEmail = settings?.sender_email || "ravi.soni4254@gmail.com";
+    const outreach1 = settings?.outreach_email_1 || "";
 
-    if (!r1 && !r2) {
-      return NextResponse.json({ threads: [], nextPageToken: null, configured: false });
+    // Build Gmail query based on type
+    let q: string;
+    if (type === "outreach") {
+      if (!outreach1) {
+        return NextResponse.json({ threads: [], nextPageToken: null, configured: false });
+      }
+      q = `cc:${outreach1}`;
+      if (search) q += ` ${search}`;
+    } else {
+      if (!r1 && !r2) {
+        return NextResponse.json({ threads: [], nextPageToken: null, configured: false });
+      }
+      const reviewerEmails = [r1, r2].filter(Boolean);
+      const parts = reviewerEmails.flatMap((e) => [`to:${e}`, `from:${e}`]);
+      q = `(${parts.join(" OR ")})`;
+      if (search) q += ` ${search}`;
     }
 
     const gmail = getGmailClient();
-    const reviewerEmails = [r1, r2].filter(Boolean);
-
-    const parts = reviewerEmails.flatMap((e) => [`to:${e}`, `from:${e}`]);
-    let q = `(${parts.join(" OR ")})`;
-    if (search) q += ` ${search}`;
-
     const listRes = await gmail.users.threads.list({
       userId: "me",
       q,
@@ -195,7 +219,7 @@ export async function GET(req: NextRequest) {
           const lastHeaders = (lastMsg.payload?.headers || []) as { name: string; value: string }[];
           const subject = sanitize(getHeader(firstHeaders, "Subject") || "(no subject)");
           const from = getHeader(lastHeaders, "From");
-          const sender = maskSender(from, r1, r2);
+          const sender = maskSender(from, r1, r2, senderEmail, outreach1, type);
           const date = lastMsg.internalDate
             ? new Date(parseInt(lastMsg.internalDate)).toISOString()
             : "";

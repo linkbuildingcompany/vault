@@ -13,18 +13,25 @@ function getHeader(headers: { name: string; value: string }[], name: string): st
   return headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value || "";
 }
 
-function maskSender(from: string, r1: string, r2: string): string {
+function maskSender(
+  from: string,
+  r1: string,
+  r2: string,
+  senderEmail: string,
+  outreach1: string
+): string {
   const lower = from.toLowerCase();
+  if (senderEmail && lower.includes(senderEmail.toLowerCase())) return "You";
   if (r1 && lower.includes(r1.toLowerCase())) return "Reviewer 1";
   if (r2 && lower.includes(r2.toLowerCase())) return "Reviewer 2";
-  return "You";
+  if (outreach1 && lower.includes(outreach1.toLowerCase())) return "Outreach Email 1";
+  return "Partner";
 }
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// Sign-off phrases — everything from this line onward is stripped
 const SIGNOFF_PHRASES = [
   "kind regards", "best regards", "warm regards", "many thanks",
   "thanks,", "thanks!", "thank you,", "thank you!", "regards,",
@@ -46,15 +53,15 @@ function stripSignature(text: string): string {
 function sanitize(text: string): string {
   if (!text) return text;
 
-  // 0. Strip all images before anything else
-  text = text.replace(/<img\b[^>]*\/?>/gi, "");                                          // <img> tags
-  text = text.replace(/<picture\b[^>]*>[\s\S]*?<\/picture>/gi, "");                      // <picture> elements
-  text = text.replace(/<figure\b[^>]*>[\s\S]*?<\/figure>/gi, "");                        // <figure> elements
-  text = text.replace(/src=["']cid:[^"']*["']/gi, 'src=""');                             // CID inline embeds
-  text = text.replace(/data:image\/[^;]+;base64,[A-Za-z0-9+/=\s]+/gi, "");              // base64 data URIs
-  text = text.replace(/\[cid:[^\]]*\]/gi, "");                                            // [cid:...] plain-text refs
+  // 0. Strip all images
+  text = text.replace(/<img\b[^>]*\/?>/gi, "");
+  text = text.replace(/<picture\b[^>]*>[\s\S]*?<\/picture>/gi, "");
+  text = text.replace(/<figure\b[^>]*>[\s\S]*?<\/figure>/gi, "");
+  text = text.replace(/src=["']cid:[^"']*["']/gi, 'src=""');
+  text = text.replace(/data:image\/[^;]+;base64,[A-Za-z0-9+/=\s]+/gi, "");
+  text = text.replace(/\[cid:[^\]]*\]/gi, "");
 
-  // 1. Strip signature block first (everything from sign-off line down)
+  // 1. Strip signature block
   text = stripSignature(text);
 
   // 2. Blocked email addresses
@@ -62,6 +69,7 @@ function sanitize(text: string): string {
     "betty.soare@fatjoe.com",
     "jayson.sallatic@fatjoe.com",
     "valme.claro@fatjoe.com",
+    "outreach@fatjoe.com",
     "ravi@linkbuilding.company",
   ];
   for (const email of blockedEmails) {
@@ -71,26 +79,26 @@ function sanitize(text: string): string {
   // 3. Any @fatjoe.com address
   text = text.replace(/[\w.+-]+@fatjoe\.com/gi, "[redacted]");
 
-  // 4. FatJoe brand mentions + domain
+  // 4. FatJoe brand + domain
   text = text.replace(/fat\s*joe/gi, "[redacted]");
   text = text.replace(/\bfatjoe\.com\b/gi, "[redacted]");
 
-  // 5. linkbuilding.company domain + phrase
+  // 5. linkbuilding.company
   text = text.replace(/[\w.+-]+@linkbuilding\.company/gi, "[redacted]");
   text = text.replace(/\blinkbuilding\.company\b/gi, "[redacted]");
   text = text.replace(/link\s+building\s+company/gi, "[redacted]");
 
-  // 6. Phone numbers (UK, US, international formats)
+  // 6. Phone numbers
   text = text.replace(/(\+?[\d\s\-().]{7,20}(?:\s*(ext|x)\.?\s*\d{1,6})?)/g, (match) => {
     const digits = match.replace(/\D/g, "");
     if (digits.length >= 7 && digits.length <= 15) return "[redacted]";
     return match;
   });
 
-  // 7. "Website:" / "Web:" lines
+  // 7. Website lines
   text = text.replace(/^\s*(website|web|www)\s*:.*$/gim, "[redacted]");
 
-  // 8. Lines with fatjoe.com domain
+  // 8. Lines with fatjoe.com
   text = text.replace(/^.*\bfatjoe\.com\b.*$/gim, "[redacted]");
 
   // 9. Physical address lines
@@ -99,10 +107,10 @@ function sanitize(text: string): string {
   // 10. Company registration lines
   text = text.replace(/^.*(company\s*(no|number|reg|registration)|reg(istered)?\s*(no|number)).*$/gim, "[redacted]");
 
-  // 11. Legal disclaimer paragraphs
+  // 11. Legal disclaimer
   text = text.replace(/^.*(private and confidential|personal data|personal views|received this message in error|do not use, copy|disclose the information).*$/gim, "[redacted]");
 
-  // 12. Social media profile URLs
+  // 12. Social media URLs
   text = text.replace(
     /https?:\/\/(www\.)?(linkedin\.com|twitter\.com|x\.com|facebook\.com|instagram\.com|tiktok\.com|youtube\.com|t\.co|fb\.com|fb\.me|lnkd\.in|bit\.ly|ow\.ly|buff\.ly)\/\S*/gi,
     "[redacted]"
@@ -131,7 +139,7 @@ function sanitize(text: string): string {
   );
   text = text.replace(titlePattern, "[redacted]");
 
-  // 15. Collapse multiple [redacted] lines
+  // 15. Collapse multiple [redacted]
   text = text.replace(/(\[redacted\]\s*\n){2,}/g, "[redacted]\n");
   text = text.replace(/(\[redacted\]\s*){2,}/g, "[redacted] ");
 
@@ -144,12 +152,14 @@ export async function GET(req: NextRequest, { params }: { params: { threadId: st
 
     const { data: settings } = await db
       .from("reviewer_settings")
-      .select("reviewer_1_email, reviewer_2_email")
+      .select("*")
       .eq("id", 1)
       .single();
 
     const r1 = settings?.reviewer_1_email || "";
     const r2 = settings?.reviewer_2_email || "";
+    const senderEmail = settings?.sender_email || "ravi.soni4254@gmail.com";
+    const outreach1 = settings?.outreach_email_1 || "";
 
     const gmail = getGmailClient();
     const res = await gmail.users.threads.get({ userId: "me", id: threadId, format: "FULL" as "FULL" });
@@ -167,7 +177,7 @@ export async function GET(req: NextRequest, { params }: { params: { threadId: st
         messageId,
         references,
         subject,
-        sender: maskSender(from, r1, r2),
+        sender: maskSender(from, r1, r2, senderEmail, outreach1),
         date,
         body: sanitize(rawBody),
       };

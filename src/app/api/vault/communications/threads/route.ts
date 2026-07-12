@@ -24,10 +24,32 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+// Sign-off phrases — everything from this line onward is stripped
+const SIGNOFF_PHRASES = [
+  "kind regards", "best regards", "warm regards", "many thanks",
+  "thanks,", "thanks!", "thank you,", "thank you!", "regards,",
+  "cheers,", "sincerely,", "with regards,", "yours sincerely,",
+  "yours faithfully,", "best,", "all the best,", "--",
+];
+
+function stripSignature(text: string): string {
+  const lines = text.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim().toLowerCase();
+    if (SIGNOFF_PHRASES.some((s) => trimmed === s || trimmed.startsWith(s + " "))) {
+      return lines.slice(0, i).join("\n").trimEnd();
+    }
+  }
+  return text;
+}
+
 function sanitize(text: string): string {
   if (!text) return text;
 
-  // 1. Blocked email addresses
+  // 1. Strip signature block first (everything from sign-off line down)
+  text = stripSignature(text);
+
+  // 2. Blocked email addresses
   const blockedEmails = [
     "betty.soare@fatjoe.com",
     "jayson.sallatic@fatjoe.com",
@@ -38,18 +60,41 @@ function sanitize(text: string): string {
     text = text.replace(new RegExp(escapeRegex(email), "gi"), "[redacted]");
   }
 
-  // 2. Any @fatjoe.com address
+  // 3. Any @fatjoe.com address
   text = text.replace(/[\w.+-]+@fatjoe\.com/gi, "[redacted]");
 
-  // 3. FatJoe brand mentions
+  // 4. FatJoe brand mentions + domain
   text = text.replace(/fat\s*joe/gi, "[redacted]");
+  text = text.replace(/\bfatjoe\.com\b/gi, "[redacted]");
 
-  // 4. linkbuilding.company domain + phrase
-  text = text.replace(/ravi@linkbuilding\.company/gi, "[redacted]");
-  text = text.replace(/linkbuilding\.company/gi, "[redacted]");
+  // 5. linkbuilding.company domain + phrase
+  text = text.replace(/[\w.+-]+@linkbuilding\.company/gi, "[redacted]");
+  text = text.replace(/\blinkbuilding\.company\b/gi, "[redacted]");
   text = text.replace(/link\s+building\s+company/gi, "[redacted]");
 
-  // 5. Social media profile URLs (with and without protocol)
+  // 6. Phone numbers (UK, US, international formats)
+  text = text.replace(/(\+?[\d\s\-().]{7,20}(?:\s*(ext|x)\.?\s*\d{1,6})?)/g, (match) => {
+    const digits = match.replace(/\D/g, "");
+    if (digits.length >= 7 && digits.length <= 15) return "[redacted]";
+    return match;
+  });
+
+  // 7. "Website:" / "Web:" lines
+  text = text.replace(/^\s*(website|web|www)\s*:.*$/gim, "[redacted]");
+
+  // 8. Lines with known domains (fatjoe.com etc.)
+  text = text.replace(/^.*\bfatjoe\.com\b.*$/gim, "[redacted]");
+
+  // 9. Physical address lines — lines with postcode/zip or street keywords
+  text = text.replace(/^.*(p\.?o\.?\s*box|\bsuite\b|\bfloor\b|\bunit\b|\broad\b|\bstreet\b|\bave\b|\bavenue\b|\blane\b|\bplace\b|\bdrive\b|[A-Z]{1,2}\d[\d\w]?\s*\d[A-Z]{2}|\b\d{5}(-\d{4})?\b).*$/gim, "[redacted]");
+
+  // 10. Company registration lines
+  text = text.replace(/^.*(company\s*(no|number|reg|registration)|reg(istered)?\s*(no|number)).*$/gim, "[redacted]");
+
+  // 11. Legal disclaimer paragraphs (long lines with "private", "confidential", "personal data")
+  text = text.replace(/^.*(private and confidential|personal data|personal views|received this message in error|do not use, copy|disclose the information).*$/gim, "[redacted]");
+
+  // 12. Social media profile URLs
   text = text.replace(
     /https?:\/\/(www\.)?(linkedin\.com|twitter\.com|x\.com|facebook\.com|instagram\.com|tiktok\.com|youtube\.com|t\.co|fb\.com|fb\.me|lnkd\.in|bit\.ly|ow\.ly|buff\.ly)\/\S*/gi,
     "[redacted]"
@@ -59,10 +104,10 @@ function sanitize(text: string): string {
     " [redacted]"
   );
 
-  // 6. Social @handles in signatures
+  // 13. Social @handles
   text = text.replace(/(^|\s)@[A-Za-z0-9_]{2,}/gm, (m, prefix) => prefix + "[redacted]");
 
-  // 7. Job title lines (short standalone lines with title keywords)
+  // 14. Job title / role lines
   const titleKeywords = [
     "manager", "director", "specialist", "executive", "coordinator",
     "analyst", "consultant", "strategist", "associate", "representative",
@@ -70,31 +115,19 @@ function sanitize(text: string): string {
     "founder", "co-founder", "partner", "lead", "officer", "editor",
     "writer", "producer", "outreach", "seo", "sem", "content", "marketing",
     "account manager", "project manager", "team lead", "link builder",
-    "link building", "pr specialist", "digital marketing",
+    "link building", "pr specialist", "digital marketing", "operations",
   ];
   const titlePattern = new RegExp(
-    `^[^\\n]{0,60}(${titleKeywords.map(escapeRegex).join("|")})[^\\n]{0,60}$`,
+    `^[^\\n]{0,80}(${titleKeywords.map(escapeRegex).join("|")})[^\\n]{0,80}$`,
     "gim"
   );
   text = text.replace(titlePattern, "[redacted]");
 
-  // 8. Strip dirty signature blocks
-  text = stripDirtySignature(text);
-
-  // 9. Collapse multiple consecutive [redacted] lines
+  // 15. Collapse multiple [redacted] lines
   text = text.replace(/(\[redacted\]\s*\n){2,}/g, "[redacted]\n");
+  text = text.replace(/(\[redacted\]\s*){2,}/g, "[redacted] ");
 
-  return text;
-}
-
-function stripDirtySignature(text: string): string {
-  const sigPattern = /(\r?\n[ \t]*)(-{2,}|Best regards|Kind regards|Warm regards|Thanks,|Thank you,|Regards,|Cheers,|Sincerely,|With regards,)/i;
-  const match = sigPattern.exec(text);
-  if (!match) return text;
-  const before = text.slice(0, match.index);
-  const after = text.slice(match.index);
-  if (after.includes("[redacted]")) return before.trimEnd();
-  return text;
+  return text.trim();
 }
 
 export async function GET(req: NextRequest) {

@@ -20,15 +20,14 @@ function maskSender(from: string, r1: string, r2: string): string {
   return "You";
 }
 
-/**
- * Sanitize any text that reaches the browser.
- * Removes/replaces all references to FatJoe, linkbuilding.company,
- * and specific email addresses that must never be exposed.
- */
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function sanitize(text: string): string {
   if (!text) return text;
 
-  // 1. Specific email addresses (case-insensitive)
+  // 1. Blocked email addresses
   const blockedEmails = [
     "betty.soare@fatjoe.com",
     "jayson.sallatic@fatjoe.com",
@@ -39,50 +38,62 @@ function sanitize(text: string): string {
     text = text.replace(new RegExp(escapeRegex(email), "gi"), "[redacted]");
   }
 
-  // 2. Any remaining @fatjoe.com email addresses (e.g. other team members)
+  // 2. Any @fatjoe.com address
   text = text.replace(/[\w.+-]+@fatjoe\.com/gi, "[redacted]");
 
-  // 3. "FatJoe" / "Fat Joe" brand mentions
+  // 3. FatJoe brand mentions
   text = text.replace(/fat\s*joe/gi, "[redacted]");
 
-  // 4. ravi@linkbuilding.company (already caught above, but keep for safety)
+  // 4. linkbuilding.company domain + phrase
   text = text.replace(/ravi@linkbuilding\.company/gi, "[redacted]");
-
-  // 5. linkbuilding.company domain mentions
   text = text.replace(/linkbuilding\.company/gi, "[redacted]");
-
-  // 6. "link building company" text mentions
   text = text.replace(/link\s+building\s+company/gi, "[redacted]");
 
-  // 7. Strip email signature blocks that may contain the above
-  //    Common signature delimiters: "-- ", "Kind regards", "Best regards", "Warm regards", "Thanks,"
-  //    We strip from the delimiter onward if it contains redacted content
+  // 5. Social media profile URLs (with and without protocol)
+  text = text.replace(
+    /https?:\/\/(www\.)?(linkedin\.com|twitter\.com|x\.com|facebook\.com|instagram\.com|tiktok\.com|youtube\.com|t\.co|fb\.com|fb\.me|lnkd\.in|bit\.ly|ow\.ly|buff\.ly)\/\S*/gi,
+    "[redacted]"
+  );
+  text = text.replace(
+    /(^|\s)(www\.)?(linkedin\.com|twitter\.com|x\.com|facebook\.com|instagram\.com|tiktok\.com|youtube\.com|lnkd\.in)\/\S*/gim,
+    " [redacted]"
+  );
+
+  // 6. Social @handles in signatures
+  text = text.replace(/(^|\s)@[A-Za-z0-9_]{2,}/gm, (m, prefix) => prefix + "[redacted]");
+
+  // 7. Job title lines (short standalone lines with title keywords)
+  const titleKeywords = [
+    "manager", "director", "specialist", "executive", "coordinator",
+    "analyst", "consultant", "strategist", "associate", "representative",
+    "head of", "vp ", "vice president", "ceo", "coo", "cto", "cfo",
+    "founder", "co-founder", "partner", "lead", "officer", "editor",
+    "writer", "producer", "outreach", "seo", "sem", "content", "marketing",
+    "account manager", "project manager", "team lead", "link builder",
+    "link building", "pr specialist", "digital marketing",
+  ];
+  const titlePattern = new RegExp(
+    `^[^\\n]{0,60}(${titleKeywords.map(escapeRegex).join("|")})[^\\n]{0,60}$`,
+    "gim"
+  );
+  text = text.replace(titlePattern, "[redacted]");
+
+  // 8. Strip dirty signature blocks
   text = stripDirtySignature(text);
+
+  // 9. Collapse multiple consecutive [redacted] lines
+  text = text.replace(/(\[redacted\]\s*\n){2,}/g, "[redacted]\n");
 
   return text;
 }
 
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/**
- * If a signature block (after -- / Best regards / Kind regards / Thanks,)
- * contains "[redacted]" after sanitization, remove the whole block.
- */
 function stripDirtySignature(text: string): string {
-  // Split on common signature starters
-  const sigPattern = /(\r?\n|\s{2,})(--|Best regards|Kind regards|Warm regards|Thanks,|Regards,|Cheers,|Sincerely,)[^\n]*/i;
+  const sigPattern = /(\r?\n[ \t]*)(-{2,}|Best regards|Kind regards|Warm regards|Thanks,|Thank you,|Regards,|Cheers,|Sincerely,|With regards,)/i;
   const match = sigPattern.exec(text);
   if (!match) return text;
-
   const before = text.slice(0, match.index);
   const after = text.slice(match.index);
-
-  // Only strip if the signature region contains redacted markers
-  if (after.includes("[redacted]")) {
-    return before.trimEnd();
-  }
+  if (after.includes("[redacted]")) return before.trimEnd();
   return text;
 }
 
@@ -108,7 +119,6 @@ export async function GET(req: NextRequest) {
     const gmail = getGmailClient();
     const reviewerEmails = [r1, r2].filter(Boolean);
 
-    // Unified query: all threads to OR from reviewer emails
     const parts = reviewerEmails.flatMap((e) => [`to:${e}`, `from:${e}`]);
     let q = `(${parts.join(" OR ")})`;
     if (search) q += ` ${search}`;

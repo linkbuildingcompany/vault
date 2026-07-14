@@ -97,7 +97,8 @@ export default function VaultSettingsPage() {
   const isDirty =
     reviewerSettings.sender_email !== originalSettings.sender_email ||
     reviewerSettings.reviewer_1_email !== originalSettings.reviewer_1_email ||
-    reviewerSettings.reviewer_2_email !== originalSettings.reviewer_2_email;
+    reviewerSettings.reviewer_2_email !== originalSettings.reviewer_2_email ||
+    reviewerSettings.outreach_email_1 !== originalSettings.outreach_email_1;
 
   const saveReviewerSettings = async () => {
     setSaving(true);

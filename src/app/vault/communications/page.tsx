@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import {
-  Send, Settings, PenSquare, RefreshCw, ChevronLeft,
+  Send, PenSquare, RefreshCw, ChevronLeft,
   Search, X, Loader2, Mail, AlertCircle, MessageSquare, Clock, Bell,
   Users, Globe, Paperclip, FileImage, FileText, File as FileIcon,
 } from "lucide-react";
@@ -144,13 +144,7 @@ export default function CommunicationsPage() {
   const [replying, setReplying] = useState(false);
   const [replyErr, setReplyErr] = useState("");
 
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [r1Email, setR1Email] = useState("");
-  const [r2Email, setR2Email] = useState("");
-  const [outreach1Email, setOutreach1Email] = useState("");
   const [senderEmailVal, setSenderEmailVal] = useState("");
-  const [savingSettings, setSavingSettings] = useState(false);
-  const [settingsMsg, setSettingsMsg] = useState("");
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -313,44 +307,17 @@ export default function CommunicationsPage() {
     }
   };
 
-  // ── Settings ────────────────────────────────────────────────────────────────
+  // ── Load sender email (for compose From row) ────────────────────────────────
   const loadSettings = useCallback(async () => {
     const token = await getToken();
     const res = await fetch("/api/vault/communications/settings", { headers: { Authorization: `Bearer ${token}` } });
     if (res.ok) {
       const d = await res.json();
-      setR1Email(d.reviewer_1_email || "");
-      setR2Email(d.reviewer_2_email || "");
-      setOutreach1Email(d.outreach_email_1 || "");
       setSenderEmailVal(d.sender_email || "");
     }
   }, []);
 
-  // Load settings on mount so sender email is available in compose
   useEffect(() => { loadSettings(); }, [loadSettings]);
-  useEffect(() => { if (settingsOpen) loadSettings(); }, [settingsOpen, loadSettings]);
-
-  const saveSettings = async () => {
-    setSavingSettings(true); setSettingsMsg("");
-    try {
-      const token = await getToken();
-      const res = await fetch("/api/vault/communications/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          reviewer_1_email: r1Email,
-          reviewer_2_email: r2Email,
-          outreach_email_1: outreach1Email,
-          sender_email: senderEmailVal,
-        }),
-      });
-      const data = await res.json();
-      setSettingsMsg(res.ok ? "Saved!" : data.error || "Failed.");
-      if (res.ok) { setConfigured(true); fetchThreads(); }
-    } finally {
-      setSavingSettings(false);
-    }
-  };
 
   // ── Filtered threads ────────────────────────────────────────────────────────
   const filteredThreads = threads.filter((t) => {
@@ -424,11 +391,6 @@ export default function CommunicationsPage() {
               )}
             </div>
             <div className="flex items-center gap-1">
-              {role === "admin" && (
-                <button onClick={() => setSettingsOpen(true)} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg" title="Settings">
-                  <Settings className="h-4 w-4" />
-                </button>
-              )}
               <button onClick={fetchThreads} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg" title="Refresh">
                 <RefreshCw className={`h-4 w-4 ${listLoading ? "animate-spin" : ""}`} />
               </button>
@@ -784,75 +746,6 @@ export default function CommunicationsPage() {
         </div>
       )}
 
-      {/* ── Settings modal ─────────────────────────────────────────────────── */}
-      {settingsOpen && role === "admin" && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b">
-              <h3 className="text-base font-semibold text-gray-900">Communications Settings</h3>
-              <button onClick={() => { setSettingsOpen(false); setSettingsMsg(""); }} className="text-gray-400 hover:text-gray-600">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="p-5 space-y-4">
-              <p className="text-xs text-gray-500">Real emails are never visible in conversations — shown as aliases only.</p>
-
-              {/* Sender */}
-              <div>
-                <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Sender Email</label>
-                <input type="email" value={senderEmailVal} onChange={(e) => setSenderEmailVal(e.target.value)} placeholder="sender@gmail.com"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-
-              <hr />
-
-              {/* Reviewer 1 */}
-              <div>
-                <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 mb-1.5">
-                  <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">Reviewer 1</span>
-                  <span className="text-gray-400 font-normal">— TO</span>
-                </label>
-                <input type="email" value={r1Email} onChange={(e) => setR1Email(e.target.value)} placeholder="reviewer1@example.com"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-
-              {/* Reviewer 2 */}
-              <div>
-                <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 mb-1.5">
-                  <span className="bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full">Reviewer 2</span>
-                  <span className="text-gray-400 font-normal">— CC</span>
-                </label>
-                <input type="email" value={r2Email} onChange={(e) => setR2Email(e.target.value)} placeholder="reviewer2@example.com"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-
-              <hr />
-
-              {/* Outreach Email 1 */}
-              <div>
-                <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 mb-1.5">
-                  <span className="bg-orange-100 text-orange-800 px-2 py-0.5 rounded-full">Outreach Email 1</span>
-                  <span className="text-gray-400 font-normal">— CC on outreach</span>
-                </label>
-                <input type="email" value={outreach1Email} onChange={(e) => setOutreach1Email(e.target.value)} placeholder="outreach@example.com"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
-              </div>
-
-              {settingsMsg && (
-                <p className={`text-xs font-medium ${settingsMsg === "Saved!" ? "text-green-600" : "text-red-600"}`}>{settingsMsg}</p>
-              )}
-            </div>
-            <div className="flex items-center justify-end gap-3 px-5 py-4 border-t bg-gray-50">
-              <button onClick={() => { setSettingsOpen(false); setSettingsMsg(""); }} className="text-sm text-gray-500 hover:text-gray-700">Cancel</button>
-              <button onClick={saveSettings} disabled={savingSettings}
-                className="flex items-center gap-2 bg-gray-900 hover:bg-gray-800 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2.5 rounded-lg">
-                {savingSettings && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import {
   Mail,
   Users,
+  Globe,
   ChevronRight,
   Save,
   Check,
@@ -20,12 +21,14 @@ interface ReviewerSettings {
   sender_email: string;
   reviewer_1_email: string;
   reviewer_2_email: string;
+  outreach_email_1: string;
 }
 
 const DEFAULT_SETTINGS: ReviewerSettings = {
   sender_email: "",
   reviewer_1_email: "",
   reviewer_2_email: "",
+  outreach_email_1: "",
 };
 
 // ── Settings sections config ──────────────────────────────────────────────────
@@ -36,7 +39,12 @@ const SECTIONS = [
     icon: Users,
     description: "Configure who receives review communications",
   },
-  // Add more sections here as needed in the future
+  {
+    id: "outreach",
+    label: "Outreach Emails",
+    icon: Globe,
+    description: "Configure CC address for outreach emails",
+  },
 ];
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -76,6 +84,7 @@ export default function VaultSettingsPage() {
             sender_email: data.sender_email || "",
             reviewer_1_email: data.reviewer_1_email || "",
             reviewer_2_email: data.reviewer_2_email || "",
+            outreach_email_1: data.outreach_email_1 || "",
           };
           setReviewerSettings(s);
           setOriginalSettings(s);
@@ -347,7 +356,107 @@ export default function VaultSettingsPage() {
               </div>
             )}
 
-            {/* Future sections can be added here */}
+            {/* ── Outreach Emails section ──────────────────────────── */}
+            {activeSection === "outreach" && (
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                <div className="px-6 py-5 border-b border-gray-100">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-50">
+                      <Globe className="h-4 w-4 text-orange-600" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-semibold text-gray-900">
+                        Outreach Emails
+                      </h2>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Configure the CC address used on all outreach emails to partner sites.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="px-6 py-6">
+                  {loadingSettings ? (
+                    <div className="flex items-center gap-2 text-sm text-gray-400 py-4">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading settings…
+                    </div>
+                  ) : (
+                    <div className="space-y-6 max-w-md">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">
+                          CC Recipients
+                        </p>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                            Outreach Email 1
+                            <span className="ml-2 text-xs font-normal text-gray-400 bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded">
+                              CC
+                            </span>
+                          </label>
+                          <input
+                            type="email"
+                            value={reviewerSettings.outreach_email_1}
+                            onChange={(e) =>
+                              setReviewerSettings((s) => ({
+                                ...s,
+                                outreach_email_1: e.target.value,
+                              }))
+                            }
+                            placeholder="outreach@example.com"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent"
+                          />
+                          <p className="mt-1 text-xs text-gray-400">
+                            CC'd on every outreach email sent to a partner site. Shown as "Outreach Email 1" in the app.
+                          </p>
+                        </div>
+                      </div>
+
+                      {saveStatus !== "idle" && (
+                        <div
+                          className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg ${
+                            saveStatus === "success"
+                              ? "bg-green-50 text-green-700"
+                              : "bg-red-50 text-red-700"
+                          }`}
+                        >
+                          {saveStatus === "success" ? (
+                            <Check className="h-4 w-4 flex-shrink-0" />
+                          ) : (
+                            <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                          )}
+                          {saveMsg}
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-3 pt-1">
+                        <button
+                          onClick={saveReviewerSettings}
+                          disabled={saving || !isDirty}
+                          className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {saving ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Save className="h-4 w-4" />
+                          )}
+                          {saving ? "Saving…" : "Save Settings"}
+                        </button>
+                        {isDirty && !saving && (
+                          <span className="text-xs text-amber-600">Unsaved changes</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">
+                  <p className="text-xs text-gray-400">
+                    🔒 The real email address is stored securely server-side. Partners and viewers only ever see "Outreach Email 1".
+                  </p>
+                </div>
+              </div>
+            )}
           </main>
         </div>
       </div>

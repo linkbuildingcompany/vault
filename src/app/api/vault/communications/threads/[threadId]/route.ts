@@ -79,6 +79,34 @@ function sanitize(text: string): string {
   // 3. Any @fatjoe.com address
   text = text.replace(/[\w.+-]+@fatjoe\.com/gi, "[redacted]");
 
+  // 3.5. Blocked person names (FatJoe team)
+  const blockedNames = [
+    "Jayson Sallatic", "Francis Negel Prado", "Francis Prado",
+    "Antonia Higgs", "Isabella Horton", "Kirsty Jennings",
+    "R K Sayat", "RK Sayat", "Betty Soare", "Leah Daly",
+    "Reuben Glenn Sayat", "Reuben Sayat", "Michaela Tindale",
+    "Daniel Trick", "Cherry Ann S", "Emily Bradley",
+    "Alasdair Kennedy", "Valme Claro", "Joe T.", "Helen Gaskell",
+    "Joe Davies", "Mateus Parize", "Natalie Griffiths",
+    "Victoria Ivanova", "Sofia Vallasciani",
+    "Pedro Feria Pino", "Pedro Pino", "Niño Brillo", "Nino Brillo",
+    "Juan Guillermo Mariño", "Juan Mariño", "Juan Marino",
+    "Gemirus Garcia", "Luke Luby", "Emilee Ratcliffe",
+    "Connie Paige Wall", "Connie Wall", "Elise Vijfvinkel",
+    "Marvi Grace Cuarte", "Marvi Cuarte", "Carla Coetzer",
+    "Ariane Canoy", "Kennice Morrison",
+    "Mark Joevic Arellano", "Mark Arellano", "Kieran MacGough",
+    "Freecy Tutor", "Ryan Grice", "Sarah Salathiel",
+    "Sandra Chica", "Daniel Hobson", "Matthew Goodwin",
+    "Mary Grace Limbre", "Mary Limbre", "Danielle Samson",
+    "Sara McBain", "Parmindar Singh", "Siobhan Jackson",
+    "Celine Domenech", "Melinda Visagie", "Robert Shillcock",
+    "Abby Marsh", "Amna Sattar",
+  ];
+  for (const name of blockedNames) {
+    text = text.replace(new RegExp(escapeRegex(name), "gi"), "[redacted]");
+  }
+
   // 4. FatJoe brand + domain
   text = text.replace(/fat\s*joe/gi, "[redacted]");
   text = text.replace(/\bfatjoe\.com\b/gi, "[redacted]");

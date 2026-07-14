@@ -466,7 +466,7 @@ export default function CommunicationsPage() {
                   {activeTab === "outreach" ? "Outreach Email 1 not configured." : "Reviewer emails not configured."}
                 </p>
                 {role === "admin" && (
-                  <button onClick={() => setSettingsOpen(true)} className="text-xs text-blue-600 hover:underline">Configure →</button>
+                  <a href="/vault/settings" className="text-xs text-blue-600 hover:underline">Configure in Settings →</a>
                 )}
               </div>
             ) : filteredThreads.length === 0 ? (

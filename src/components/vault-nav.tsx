@@ -24,7 +24,10 @@ export function VaultNav({ role, userEmail }: VaultNavProps) {
     { href: "/vault/website-review", label: "Website Review" },
     { href: "/vault/communications", label: "Communications" },
     ...(role === "admin"
-      ? [{ href: "/vault/settings", label: "Settings" }]
+      ? [
+          { href: "/vault/alina", label: "Alina Inbox" },
+          { href: "/vault/settings", label: "Settings" },
+        ]
       : []),
   ];
 

@@ -140,7 +140,10 @@ export async function GET(req: NextRequest) {
 
     const gmail = getAlinaGmailClient(alinaToken);
 
-    let q = tab === "orders" ? "from:fatjoe.com" : "-from:fatjoe.com";
+    let q =
+      tab === "orders"
+        ? "from:publishing@fatjoe.com"
+        : "from:ravi.soni.4254@gmail.com cc:outreach@fatjoe.com";
     if (search) q += ` ${search}`;
 
     const listRes = await gmail.users.threads.list({

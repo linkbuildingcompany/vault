@@ -156,7 +156,7 @@ export default function CommunicationsPage() {
     setSelectedId(null);
     setThreadDetail(null);
     setMobileDetail(false);
-    setFilter("all");
+    setFilter("inbox");
     setSearch("");
     setListError("");
   };

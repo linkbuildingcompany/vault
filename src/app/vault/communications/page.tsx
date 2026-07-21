@@ -117,7 +117,7 @@ export default function CommunicationsPage() {
   const { role, loading: authLoading } = useAuth();
 
   // ── Top-level tab ───────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<TabType>("reviewer");
+  const [activeTab, setActiveTab] = useState<TabType>("outreach");
 
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");

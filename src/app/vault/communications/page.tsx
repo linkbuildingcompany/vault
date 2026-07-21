@@ -321,8 +321,8 @@ export default function CommunicationsPage() {
 
   // ── Filtered threads ────────────────────────────────────────────────────────
   const filteredThreads = threads.filter((t) => {
-    if (filter === "inbox") return true;                        // all threads
-    if (filter === "sent") return !needsReply(t, activeTab);   // we messaged last (awaiting reply)
+    if (filter === "inbox") return needsReply(t, activeTab);    // partner replied last → needs your reply
+    if (filter === "sent") return !needsReply(t, activeTab);   // you sent last → awaiting partner reply
     return true;
   });
 
@@ -460,7 +460,7 @@ export default function CommunicationsPage() {
               <div className="flex flex-col items-center justify-center p-10 text-center gap-2">
                 <Mail className="h-10 w-10 text-gray-200" />
                 <p className="text-sm text-gray-400">
-                  {filter === "inbox" ? "Your inbox is empty" : "No sent conversations yet"}
+                  {filter === "inbox" ? "No replies waiting for you" : "No sent conversations yet"}
                 </p>
               </div>
             ) : (

@@ -24,6 +24,18 @@ function getHeader(headers: { name: string; value: string }[], name: string): st
   return headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value || "";
 }
 
+/** Extract all email addresses from a header value like "Name <email>, Other <email2>" */
+function parseAddresses(header: string): string[] {
+  if (!header) return [];
+  return header.split(",").map((s) => s.trim()).filter(Boolean);
+}
+
+/** Strip display name, return raw email address only (lowercase) */
+function extractEmail(addr: string): string {
+  const match = addr.match(/<([^>]+)>/);
+  return (match ? match[1] : addr).trim().toLowerCase();
+}
+
 export async function POST(req: NextRequest, { params }: { params: { threadId: string } }) {
   try {
     const { threadId } = params;
@@ -40,7 +52,7 @@ export async function POST(req: NextRequest, { params }: { params: { threadId: s
       .eq("id", 1)
       .single();
 
-    const alinaEmail = settings?.alina_email || "alina@rehiring.net";
+    const alinaEmail = (settings?.alina_email || "alina@aiimpactonservicejobs.com").toLowerCase();
     const alinaToken = settings?.alina_refresh_token || "";
 
     if (!alinaToken) {
@@ -63,31 +75,54 @@ export async function POST(req: NextRequest, { params }: { params: { threadId: s
 
     const lastMsg = messages[messages.length - 1];
     const headers = (lastMsg.payload?.headers || []) as { name: string; value: string }[];
-    const lastFrom = getHeader(headers, "From");
-    const lastTo = getHeader(headers, "To");
-    const lastReplyTo = getHeader(headers, "Reply-To");
-    const subject = getHeader(headers, "Subject");
-    const messageId = getHeader(headers, "Message-ID");
-    const references = getHeader(headers, "References");
 
-    // Reply TO the person who sent the last message (if not us, reply to them; if we sent last, reply to original sender)
+    const lastFrom    = getHeader(headers, "From");
+    const lastTo      = getHeader(headers, "To");
+    const lastCc      = getHeader(headers, "Cc");
+    const lastReplyTo = getHeader(headers, "Reply-To");
+    const subject     = getHeader(headers, "Subject");
+    const messageId   = getHeader(headers, "Message-ID");
+    const references  = getHeader(headers, "References");
+
     const lastFromLower = lastFrom.toLowerCase();
-    let replyTo: string;
-    if (lastFromLower.includes(alinaEmail.toLowerCase())) {
-      // We sent last — reply to original thread starter
+
+    // Determine primary reply-to address
+    let primaryReplyTo: string;
+    if (lastFromLower.includes(alinaEmail)) {
+      // Alina sent the last message — reply to original thread starter
       const firstMsg = messages[0];
       const firstHeaders = (firstMsg.payload?.headers || []) as { name: string; value: string }[];
-      replyTo = getHeader(firstHeaders, "From");
+      primaryReplyTo = getHeader(firstHeaders, "Reply-To") || getHeader(firstHeaders, "From");
     } else {
-      replyTo = lastReplyTo || lastFrom;
+      primaryReplyTo = lastReplyTo || lastFrom;
     }
+
+    // Build CC list — all To + CC from last message, excluding Alina and primaryReplyTo
+    const primaryEmail = extractEmail(primaryReplyTo);
+    const allOthers = [
+      ...parseAddresses(lastTo),
+      ...parseAddresses(lastCc),
+    ].filter((addr) => {
+      const e = extractEmail(addr);
+      return e !== alinaEmail && e !== primaryEmail;
+    });
+
+    // Deduplicate
+    const seen = new Set<string>();
+    const ccList = allOthers.filter((addr) => {
+      const e = extractEmail(addr);
+      if (seen.has(e)) return false;
+      seen.add(e);
+      return true;
+    });
 
     const replySubject = subject.startsWith("Re:") ? subject : `Re: ${subject}`;
     const newRefs = references ? `${references} ${messageId}` : messageId;
 
     const raw = buildEmail({
       from: alinaEmail,
-      to: replyTo,
+      to: primaryReplyTo,
+      cc: ccList.length > 0 ? ccList.join(", ") : undefined,
       subject: replySubject,
       body: replyBody,
       inReplyTo: messageId,

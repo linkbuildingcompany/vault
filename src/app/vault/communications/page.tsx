@@ -500,13 +500,13 @@ export default function CommunicationsPage() {
             <div className="flex-1 flex flex-col items-center justify-center text-center p-8 gap-3">
               <MessageSquare className="h-14 w-14 text-gray-200" />
               <p className="text-sm text-gray-400">Select a conversation to read</p>
-              {needsReplyCount > 0 && (
+              {inboxCount > 0 && (
                 <button
-                  onClick={() => setFilter("needs-reply")}
+                  onClick={() => setFilter("inbox")}
                   className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-full hover:bg-amber-100 transition-colors"
                 >
                   <Bell className="h-3.5 w-3.5" />
-                  {needsReplyCount} conversation{needsReplyCount !== 1 ? "s" : ""} need{needsReplyCount === 1 ? "s" : ""} reply
+                  {inboxCount} conversation{inboxCount !== 1 ? "s" : ""} need{inboxCount === 1 ? "s" : ""} reply
                 </button>
               )}
             </div>

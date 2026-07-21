@@ -459,16 +459,6 @@ export default function CommunicationsPage() {
               <div className="flex items-center justify-center p-10">
                 <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
               </div>
-            ) : !configured ? (
-              <div className="flex flex-col items-center justify-center p-8 text-center gap-2">
-                <AlertCircle className="h-8 w-8 text-amber-400" />
-                <p className="text-sm text-gray-500">
-                  {activeTab === "outreach" ? "Outreach Email 1 not configured." : "Reviewer emails not configured."}
-                </p>
-                {role === "admin" && (
-                  <a href="/vault/settings" className="text-xs text-blue-600 hover:underline">Configure in Settings →</a>
-                )}
-              </div>
             ) : filteredThreads.length === 0 ? (
               <div className="flex flex-col items-center justify-center p-10 text-center gap-2">
                 <Mail className="h-10 w-10 text-gray-200" />

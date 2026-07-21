@@ -321,8 +321,8 @@ export default function CommunicationsPage() {
 
   // ── Filtered threads ────────────────────────────────────────────────────────
   const filteredThreads = threads.filter((t) => {
-    if (filter === "inbox") return needsReply(t, activeTab);   // partner messaged last
-    if (filter === "sent") return !needsReply(t, activeTab);   // we messaged last
+    if (filter === "inbox") return true;                        // all threads
+    if (filter === "sent") return !needsReply(t, activeTab);   // we messaged last (awaiting reply)
     return true;
   });
 

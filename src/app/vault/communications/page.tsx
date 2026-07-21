@@ -41,7 +41,7 @@ interface ThreadDetail {
   messages: Message[];
 }
 
-type Filter = "all" | "needs-reply" | "awaiting";
+type Filter = "inbox" | "sent";
 type TabType = "reviewer" | "outreach";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -119,7 +119,7 @@ export default function CommunicationsPage() {
   // ── Top-level tab ───────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<TabType>("outreach");
 
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<Filter>("inbox");
   const [search, setSearch] = useState("");
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [listLoading, setListLoading] = useState(false);
@@ -321,13 +321,13 @@ export default function CommunicationsPage() {
 
   // ── Filtered threads ────────────────────────────────────────────────────────
   const filteredThreads = threads.filter((t) => {
-    if (filter === "needs-reply") return needsReply(t, activeTab);
-    if (filter === "awaiting") return !needsReply(t, activeTab);
+    if (filter === "inbox") return needsReply(t, activeTab);   // partner messaged last
+    if (filter === "sent") return !needsReply(t, activeTab);   // we messaged last
     return true;
   });
 
   const unreadCount = threads.filter((t) => t.hasUnread).length;
-  const needsReplyCount = threads.filter((t) => needsReply(t, activeTab)).length;
+  const inboxCount = threads.filter((t) => needsReply(t, activeTab)).length;
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -426,11 +426,10 @@ export default function CommunicationsPage() {
 
           {/* Filter tabs */}
           <div className="flex border-b bg-gray-50">
-            {(["all", "needs-reply", "awaiting"] as Filter[]).map((f) => {
+            {(["inbox", "sent"] as Filter[]).map((f) => {
               const labels: Record<Filter, string> = {
-                all: "All",
-                "needs-reply": `Replied${needsReplyCount > 0 ? ` (${needsReplyCount})` : ""}`,
-                awaiting: "Awaiting",
+                inbox: `Inbox${inboxCount > 0 ? ` (${inboxCount})` : ""}`,
+                sent: "Sent",
               };
               const isActive = filter === f;
               return (
@@ -439,9 +438,7 @@ export default function CommunicationsPage() {
                   onClick={() => setFilter(f)}
                   className={`flex-1 py-2 text-[11px] font-semibold transition-colors border-b-2 ${
                     isActive
-                      ? f === "needs-reply"
-                        ? "border-amber-500 text-amber-700 bg-white"
-                        : "border-blue-600 text-blue-700 bg-white"
+                      ? "border-blue-600 text-blue-700 bg-white"
                       : "border-transparent text-gray-500 hover:text-gray-700"
                   }`}
                 >
@@ -463,7 +460,7 @@ export default function CommunicationsPage() {
               <div className="flex flex-col items-center justify-center p-10 text-center gap-2">
                 <Mail className="h-10 w-10 text-gray-200" />
                 <p className="text-sm text-gray-400">
-                  {filter === "needs-reply" ? "No replies to action" : filter === "awaiting" ? "Nothing awaiting" : "No conversations yet"}
+                  {filter === "inbox" ? "Your inbox is empty" : "No sent conversations yet"}
                 </p>
               </div>
             ) : (

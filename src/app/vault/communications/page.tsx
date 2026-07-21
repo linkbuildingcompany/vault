@@ -41,7 +41,7 @@ interface ThreadDetail {
   messages: Message[];
 }
 
-type Filter = "inbox" | "sent";
+
 type TabType = "reviewer" | "outreach";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -119,7 +119,7 @@ export default function CommunicationsPage() {
   // ── Top-level tab ───────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<TabType>("outreach");
 
-  const [filter, setFilter] = useState<Filter>("inbox");
+
   const [search, setSearch] = useState("");
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [listLoading, setListLoading] = useState(false);
@@ -156,7 +156,7 @@ export default function CommunicationsPage() {
     setSelectedId(null);
     setThreadDetail(null);
     setMobileDetail(false);
-    setFilter("inbox");
+
     setSearch("");
     setListError("");
   };
@@ -319,12 +319,8 @@ export default function CommunicationsPage() {
 
   useEffect(() => { loadSettings(); }, [loadSettings]);
 
-  // ── Filtered threads ────────────────────────────────────────────────────────
-  const filteredThreads = threads.filter((t) => {
-    if (filter === "inbox") return needsReply(t, activeTab);    // partner replied last → needs your reply
-    if (filter === "sent") return !needsReply(t, activeTab);   // you sent last → awaiting partner reply
-    return true;
-  });
+  // ── Filtered threads (search only) ─────────────────────────────────────────
+  const filteredThreads = threads;
 
   const unreadCount = threads.filter((t) => t.hasUnread).length;
   const inboxCount = threads.filter((t) => needsReply(t, activeTab)).length;
@@ -424,30 +420,6 @@ export default function CommunicationsPage() {
             </div>
           </div>
 
-          {/* Filter tabs */}
-          <div className="flex border-b bg-gray-50">
-            {(["inbox", "sent"] as Filter[]).map((f) => {
-              const labels: Record<Filter, string> = {
-                inbox: `Inbox${inboxCount > 0 ? ` (${inboxCount})` : ""}`,
-                sent: "Sent",
-              };
-              const isActive = filter === f;
-              return (
-                <button
-                  key={f}
-                  onClick={() => setFilter(f)}
-                  className={`flex-1 py-2 text-[11px] font-semibold transition-colors border-b-2 ${
-                    isActive
-                      ? "border-blue-600 text-blue-700 bg-white"
-                      : "border-transparent text-gray-500 hover:text-gray-700"
-                  }`}
-                >
-                  {labels[f]}
-                </button>
-              );
-            })}
-          </div>
-
           {/* Thread list */}
           <div className="flex-1 overflow-y-auto">
             {listError ? (
@@ -460,7 +432,7 @@ export default function CommunicationsPage() {
               <div className="flex flex-col items-center justify-center p-10 text-center gap-2">
                 <Mail className="h-10 w-10 text-gray-200" />
                 <p className="text-sm text-gray-400">
-                  {filter === "inbox" ? "No replies waiting for you" : "No sent conversations yet"}
+                  No conversations yet
                 </p>
               </div>
             ) : (
@@ -501,13 +473,10 @@ export default function CommunicationsPage() {
               <MessageSquare className="h-14 w-14 text-gray-200" />
               <p className="text-sm text-gray-400">Select a conversation to read</p>
               {inboxCount > 0 && (
-                <button
-                  onClick={() => setFilter("inbox")}
-                  className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-full hover:bg-amber-100 transition-colors"
-                >
+                <span className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-full">
                   <Bell className="h-3.5 w-3.5" />
                   {inboxCount} conversation{inboxCount !== 1 ? "s" : ""} need{inboxCount === 1 ? "s" : ""} reply
-                </button>
+                </span>
               )}
             </div>
           ) : threadLoading ? (

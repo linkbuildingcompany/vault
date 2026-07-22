@@ -23,11 +23,11 @@ export function VaultNav({ role, userEmail }: VaultNavProps) {
   const navLinks = [
     { href: "/vault/website-review", label: "Website Review" },
     { href: "/vault/communications", label: "Communications" },
+    ...(role === "admin" || role === "employee"
+      ? [{ href: "/vault/alina", label: "Alina Inbox" }]
+      : []),
     ...(role === "admin"
-      ? [
-          { href: "/vault/alina", label: "Alina Inbox" },
-          { href: "/vault/settings", label: "Settings" },
-        ]
+      ? [{ href: "/vault/settings", label: "Settings" }]
       : []),
   ];
 

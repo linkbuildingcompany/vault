@@ -242,7 +242,7 @@ export default function AlinaPage() {
     );
   }
 
-  if (role !== "admin") return null;
+  if (role !== "admin" && role !== "employee") return null;
 
   // ── Render ─────────────────────────────────────────────────────────────────
 

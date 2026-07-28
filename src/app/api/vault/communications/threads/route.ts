@@ -212,6 +212,8 @@ export async function GET(req: NextRequest) {
       const reviewerEmails = [r1, r2].filter(Boolean);
       const parts = reviewerEmails.flatMap((e) => [`to:${e}`, `from:${e}`]);
       q = `(${parts.join(" OR ")})`;
+      // Exclude outreach threads (which have outreach1 in CC)
+      if (outreach1) q += ` -cc:${outreach1}`;
       if (search) q += ` ${search}`;
     }
 

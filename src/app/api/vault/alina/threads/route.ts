@@ -131,7 +131,7 @@ export async function GET(req: NextRequest) {
       .eq("id", 1)
       .single();
 
-    const alinaEmail = settings?.alina_email || "alina@rehiring.net";
+    const alinaEmail = settings?.alina_email || "alina@aiimpactonservicejobs.com";
     const alinaToken = settings?.alina_refresh_token || "";
 
     if (!alinaToken) {
@@ -143,7 +143,7 @@ export async function GET(req: NextRequest) {
     let q =
       tab === "orders"
         ? "from:publishing@fatjoe.com"
-        : "from:ravi.soni.4254@gmail.com cc:outreach@fatjoe.com";
+        : "from:ravi.soni.4254@gmail.com";
     if (search) q += ` ${search}`;
 
     const listRes = await gmail.users.threads.list({

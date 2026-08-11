@@ -26,11 +26,11 @@ function getHeader(headers: { name: string; value: string }[], name: string): st
   return headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value || "";
 }
 
-function maskSender(from: string, alinaEmail: string, tab: string): string {
+function maskSender(from: string, alinaEmail: string, _tab: string): string {
   const lower = from.toLowerCase();
   if (alinaEmail && lower.includes(alinaEmail.toLowerCase())) return "You";
-  if (lower.includes("@fatjoe.com")) return "FatJoe Team";
-  return tab === "orders" ? "FatJoe Team" : "Partner";
+  if (lower.includes("@fatjoe.com")) return "Partner";
+  return "Partner";
 }
 
 function escapeRegex(s: string): string {

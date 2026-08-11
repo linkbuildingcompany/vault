@@ -230,11 +230,13 @@ function htmlToVisibleText(html: string): string {
  * only a plain-text body for the current reply. Use HTML only when it actually
  * starts with the current message; otherwise the plain body is more faithful.
  */
-function htmlMatchesCurrentMessage(html: string, plain: string): boolean {
+function htmlMatchesCurrentMessage(html: string, plain: string, snippet: string): boolean {
   const htmlText = htmlToVisibleText(html).toLowerCase();
+  const snippetText = htmlToVisibleText(snippet || "").toLowerCase();
   const plainText = plain.replace(/\s+/g, " ").trim().toLowerCase();
-  if (!htmlText || !plainText) return false;
-  const probe = plainText.slice(0, Math.min(80, plainText.length));
+  const currentText = snippetText || plainText;
+  if (!htmlText || !currentText) return false;
+  const probe = currentText.slice(0, Math.min(60, currentText.length));
   return probe.length >= 12 && htmlText.slice(0, 500).includes(probe);
 }
 
@@ -304,7 +306,7 @@ export async function GET(req: NextRequest, { params }: { params: { threadId: st
         sender: maskSender(from, r1, r2, senderEmail, outreach1),
         date,
         body: sanitize(rawBody),
-        bodyHtml: rawHtml && htmlMatchesCurrentMessage(rawHtml, rawBody)
+        bodyHtml: rawHtml && htmlMatchesCurrentMessage(rawHtml, rawBody, msg.snippet || "")
           ? sanitizeEmailHtml(rawHtml)
           : "",
       };

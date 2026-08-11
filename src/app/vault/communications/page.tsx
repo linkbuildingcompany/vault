@@ -33,6 +33,7 @@ interface Message {
   sender: string;
   date: string;
   body: string;
+  bodyHtml?: string;
 }
 
 interface ThreadDetail {
@@ -108,6 +109,35 @@ function statusChip(t: ThreadSummary, tab: TabType) {
       <Clock className="h-2.5 w-2.5" />
       Awaiting
     </span>
+  );
+}
+
+function EmailBody({ message }: { message: Message }) {
+  const frameRef = useRef<HTMLIFrameElement>(null);
+
+  if (!message.bodyHtml) {
+    return <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">{message.body || "(empty)"}</p>;
+  }
+
+  const document = `<!doctype html><html><head><base target="_blank"><meta name="viewport" content="width=device-width, initial-scale=1"><style>html,body{margin:0;padding:0;background:transparent;color:#111827;font-family:Arial,sans-serif;font-size:14px;line-height:1.55;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}a{color:#2563eb}</style></head><body>${message.bodyHtml}</body></html>`;
+
+  return (
+    <iframe
+      ref={frameRef}
+      title={`Email content ${message.id}`}
+      sandbox="allow-same-origin allow-popups"
+      srcDoc={document}
+      className="w-full border-0 bg-transparent"
+      style={{ minHeight: 120 }}
+      onLoad={() => {
+        try {
+          const frame = frameRef.current;
+          if (frame?.contentDocument?.documentElement) {
+            frame.style.height = `${Math.min(Math.max(frame.contentDocument.documentElement.scrollHeight + 8, 120), 1600)}px`;
+          }
+        } catch { /* sandboxed fallback keeps the minimum height */ }
+      }}
+    />
   );
 }
 
@@ -517,7 +547,7 @@ export default function CommunicationsPage() {
                 {threadDetail.messages.map((msg) => {
                   const isYou = msg.sender === "You";
                   return (
-                    <div key={msg.id} className={`flex flex-col max-w-[75%] gap-1 ${isYou ? "self-end ml-auto items-end" : "self-start mr-auto items-start"}`}>
+                    <div key={msg.id} className={`flex flex-col gap-1 ${msg.bodyHtml ? "w-full max-w-4xl" : "max-w-[75%]"} ${isYou ? "self-end ml-auto items-end" : "self-start mr-auto items-start"}`}>
                       <div className="flex items-center gap-2">
                         {!isYou && (
                           <span className={`text-[11px] font-semibold ${senderLabelClass(msg.sender)}`}>{msg.sender}</span>
@@ -527,8 +557,8 @@ export default function CommunicationsPage() {
                           <span className={`text-[11px] font-semibold ${senderLabelClass(msg.sender)}`}>{msg.sender}</span>
                         )}
                       </div>
-                      <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm ${senderBubbleClass(msg.sender)}`}>
-                        <pre className="whitespace-pre-wrap font-sans">{msg.body || "(empty)"}</pre>
+                      <div className={`w-full px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm ${senderBubbleClass(msg.sender)}`}>
+                        <EmailBody message={msg} />
                       </div>
                     </div>
                   );

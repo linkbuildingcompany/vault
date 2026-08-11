@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 import {
   Send, RefreshCw, ChevronLeft, Search, X, Loader2,
   Mail, AlertCircle, MessageSquare, Clock, Bell,
-  Settings, Users, ShoppingBag, Inbox, Plus,
+  Settings, Users, ShoppingBag, Plus,
 } from "lucide-react";
 
 async function getToken(): Promise<string> {
@@ -42,7 +42,7 @@ interface ThreadDetail {
   messages: Message[];
 }
 
-type TabType = "inbox" | "partners" | "orders";
+type TabType = "partners" | "orders";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -144,7 +144,7 @@ function EmailBody({ message }: { message: Message }) {
 export default function AlinaPage() {
   const { role, loading: authLoading } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<TabType>("inbox");
+  const [activeTab, setActiveTab] = useState<TabType>("orders");
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [loadingThreads, setLoadingThreads] = useState(false);
   const [threadsError, setThreadsError] = useState("");
@@ -377,7 +377,7 @@ export default function AlinaPage() {
         <div className="w-80 flex-shrink-0 border-r bg-white flex flex-col">
           {/* Tabs */}
           <div className="flex border-b px-3 pt-3 gap-1">
-            {(["inbox", "partners", "orders"] as const).map((tab) => (
+            {(["partners", "orders"] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -387,8 +387,8 @@ export default function AlinaPage() {
                     : "text-gray-500 hover:bg-gray-100"
                 }`}
               >
-                {tab === "inbox" ? <Inbox className="h-3.5 w-3.5" /> : tab === "partners" ? <Users className="h-3.5 w-3.5" /> : <ShoppingBag className="h-3.5 w-3.5" />}
-                {tab === "inbox" ? "Inbox" : tab === "partners" ? "Partners" : "Orders"}
+                {tab === "partners" ? <Users className="h-3.5 w-3.5" /> : <ShoppingBag className="h-3.5 w-3.5" />}
+                {tab === "partners" ? "Partners" : "Orders"}
               </button>
             ))}
           </div>
@@ -501,7 +501,7 @@ export default function AlinaPage() {
               </div>
               <p className="text-sm font-medium text-gray-500">Select a conversation</p>
               <p className="text-xs text-gray-400">
-                {activeTab === "inbox" ? "All current inbox emails will appear here" : activeTab === "partners" ? "Partner emails will appear here" : "Order emails will appear here"}
+                {activeTab === "partners" ? "Partner emails will appear here" : "Order emails will appear here"}
               </p>
             </div>
           ) : loadingThread ? (

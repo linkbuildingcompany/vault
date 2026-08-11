@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { google } from "googleapis";
 
+export const dynamic = "force-dynamic";
+const NO_STORE_HEADERS = { "Cache-Control": "no-store, max-age=0" };
+
 const db = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -135,7 +138,10 @@ export async function GET(req: NextRequest) {
     const alinaToken = settings?.alina_refresh_token || "";
 
     if (!alinaToken) {
-      return NextResponse.json({ threads: [], nextPageToken: null, configured: false });
+      return NextResponse.json(
+        { threads: [], nextPageToken: null, configured: false },
+        { headers: NO_STORE_HEADERS }
+      );
     }
 
     const gmail = getAlinaGmailClient(alinaToken);
@@ -151,7 +157,7 @@ export async function GET(req: NextRequest) {
     const listRes = await gmail.users.threads.list({
       userId: "me",
       q,
-      maxResults: 25,
+      maxResults: 50,
       ...(pageToken ? { pageToken } : {}),
     });
 
@@ -159,7 +165,10 @@ export async function GET(req: NextRequest) {
     const nextPageToken = listRes.data.nextPageToken || null;
 
     if (items.length === 0) {
-      return NextResponse.json({ threads: [], nextPageToken, configured: true });
+      return NextResponse.json(
+        { threads: [], nextPageToken, configured: true },
+        { headers: NO_STORE_HEADERS }
+      );
     }
 
     const threads = await Promise.all(
@@ -199,13 +208,19 @@ export async function GET(req: NextRequest) {
       })
     );
 
-    return NextResponse.json({
-      threads: threads.filter(Boolean),
-      nextPageToken,
-      configured: true,
-    });
+    return NextResponse.json(
+      {
+        threads: threads.filter(Boolean),
+        nextPageToken,
+        configured: true,
+      },
+      { headers: NO_STORE_HEADERS }
+    );
   } catch (err: any) {
     console.error("Alina threads error:", err);
-    return NextResponse.json({ error: err.message || "Internal error" }, { status: 500 });
+    return NextResponse.json(
+      { error: err.message || "Internal error" },
+      { status: 500, headers: NO_STORE_HEADERS }
+    );
   }
 }

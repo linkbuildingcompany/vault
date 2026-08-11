@@ -117,7 +117,7 @@ function sanitize(text: string): string {
   text = text.replace(/link\s+building\s+company/gi, "[redacted]");
 
   // 6. Phone numbers
-  text = text.replace(/(\+?[\d\s\-().]{7,20}(?:\s*(ext|x)\.?\s*\d{1,6})?)/g, (match) => {
+  text = text.replace(/(\+?[\d \t\-().]{7,20}(?:[ \t]*(ext|x)\.?[ \t]*\d{1,6})?)/g, (match) => {
     const digits = match.replace(/\D/g, "");
     if (digits.length >= 7 && digits.length <= 15) return "[redacted]";
     return match;
@@ -162,10 +162,28 @@ function sanitize(text: string): string {
     "link building", "pr specialist", "digital marketing", "operations",
   ];
   const titlePattern = new RegExp(
-    `^[^\\n]{0,80}(${titleKeywords.map(escapeRegex).join("|")})[^\\n]{0,80}$`,
-    "gim"
+    `\\b(${titleKeywords.map(escapeRegex).join("|")})\\b`,
+    "i"
   );
-  text = text.replace(titlePattern, "[redacted]");
+  text = text
+    .split(/(\r?\n)/)
+    .map((line) => {
+      if (/^\r?\n$/.test(line)) return line;
+      const visible = line
+        .replace(/<[^>]*>/g, " ")
+        .replace(/&nbsp;|&#160;/gi, " ")
+        .replace(/&[a-z]+;|&#\d+;/gi, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      const wordCount = visible ? visible.split(/\s+/).length : 0;
+      const looksLikeRoleLine =
+        visible.length <= 80 &&
+        wordCount <= 8 &&
+        titlePattern.test(visible) &&
+        !/[.!?](?:\s|$)/.test(visible);
+      return looksLikeRoleLine ? "[redacted]" : line;
+    })
+    .join("");
 
   // 15. Collapse multiple [redacted]
   text = text.replace(/(\[redacted\]\s*\n){2,}/g, "[redacted]\n");
@@ -189,6 +207,35 @@ function sanitizeEmailHtml(html: string): string {
   safe = safe.replace(/\s+srcdoc\s*=\s*("[^"]*"|'[^']*')/gi, "");
 
   return safe;
+}
+
+function htmlToVisibleText(html: string): string {
+  return html
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p\s*>|<\/div\s*>|<\/li\s*>/gi, "\n")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Some multipart replies contain an attached HTML copy of an older message but
+ * only a plain-text body for the current reply. Use HTML only when it actually
+ * starts with the current message; otherwise the plain body is more faithful.
+ */
+function htmlMatchesCurrentMessage(html: string, plain: string): boolean {
+  const htmlText = htmlToVisibleText(html).toLowerCase();
+  const plainText = plain.replace(/\s+/g, " ").trim().toLowerCase();
+  if (!htmlText || !plainText) return false;
+  const probe = plainText.slice(0, Math.min(80, plainText.length));
+  return probe.length >= 12 && htmlText.slice(0, 500).includes(probe);
 }
 
 async function extractCompleteHtmlBody(
@@ -257,7 +304,9 @@ export async function GET(req: NextRequest, { params }: { params: { threadId: st
         sender: maskSender(from, r1, r2, senderEmail, outreach1),
         date,
         body: sanitize(rawBody),
-        bodyHtml: rawHtml ? sanitizeEmailHtml(rawHtml) : "",
+        bodyHtml: rawHtml && htmlMatchesCurrentMessage(rawHtml, rawBody)
+          ? sanitizeEmailHtml(rawHtml)
+          : "",
       };
     }));
 

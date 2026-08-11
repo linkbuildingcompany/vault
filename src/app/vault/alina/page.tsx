@@ -89,6 +89,10 @@ function senderLabelClass(sender: string): string {
   return "text-gray-500"; // Partner
 }
 
+function displaySender(sender: string): string {
+  return sender === "You" ? "You" : "Partner";
+}
+
 function statusChip(t: ThreadSummary) {
   if (needsReply(t)) {
     return (
@@ -469,7 +473,7 @@ export default function AlinaPage() {
                     </div>
                     <div className="flex items-center gap-1.5 mt-1">
                       <span className="text-[10px] text-gray-400">
-                        {t.sender} · {t.messageCount} msg{t.messageCount !== 1 ? "s" : ""}
+                        {displaySender(t.sender)} · {t.messageCount} msg{t.messageCount !== 1 ? "s" : ""}
                       </span>
                     </div>
                   </button>
@@ -497,7 +501,7 @@ export default function AlinaPage() {
               </div>
               <p className="text-sm font-medium text-gray-500">Select a conversation</p>
               <p className="text-xs text-gray-400">
-                {activeTab === "inbox" ? "All current inbox emails will appear here" : activeTab === "partners" ? "Partner emails will appear here" : "FatJoe orders will appear here"}
+                {activeTab === "inbox" ? "All current inbox emails will appear here" : activeTab === "partners" ? "Partner emails will appear here" : "Order emails will appear here"}
               </p>
             </div>
           ) : loadingThread ? (
@@ -539,7 +543,7 @@ export default function AlinaPage() {
                     <div className={`${msg.bodyHtml ? "w-full max-w-4xl" : "max-w-[75%]"} rounded-2xl px-4 py-3 ${senderBubbleClass(msg.sender)}`}>
                       <div className="flex items-center gap-2 mb-1">
                         <span className={`text-[11px] font-semibold ${senderLabelClass(msg.sender)}`}>
-                          {msg.sender}
+                          {displaySender(msg.sender)}
                         </span>
                         <span className="text-[10px] text-gray-400">{fmtDateFull(msg.date)}</span>
                       </div>

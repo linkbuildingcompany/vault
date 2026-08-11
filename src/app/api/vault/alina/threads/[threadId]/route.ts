@@ -2,7 +2,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { google } from "googleapis";
-import { extractBody } from "@/lib/gmail";
+import { extractBody, extractHtmlBody } from "@/lib/gmail";
+
+export const dynamic = "force-dynamic";
+const NO_STORE_HEADERS = { "Cache-Control": "no-store, max-age=0" };
 
 const db = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -119,6 +122,54 @@ function sanitize(text: string): string {
   return text.trim();
 }
 
+/** Keep Gmail's HTML formatting while preserving the existing FATJOE redaction rules. */
+function sanitizeEmailHtml(html: string): string {
+  if (!html) return "";
+
+  // Apply the same established content masking used by the plain-text view first.
+  let safe = sanitize(html);
+
+  // Email HTML is displayed in a sandboxed iframe; remove active/embedded content too.
+  safe = safe.replace(/<(script|iframe|object|embed|form|input|button|textarea|select|meta|link|base)\b[^>]*>[\s\S]*?<\/\1>/gi, "");
+  safe = safe.replace(/<(script|iframe|object|embed|form|input|button|textarea|select|meta|link|base)\b[^>]*\/?>/gi, "");
+  safe = safe.replace(/\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+  safe = safe.replace(/\s+(href|src)\s*=\s*(["'])\s*javascript:[\s\S]*?\2/gi, "");
+  safe = safe.replace(/\s+srcdoc\s*=\s*("[^"]*"|'[^']*')/gi, "");
+
+  return safe;
+}
+
+async function extractCompleteHtmlBody(
+  payload: any,
+  messageId: string,
+  gmail: ReturnType<typeof getAlinaGmailClient>
+): Promise<string> {
+  const inlineHtml = extractHtmlBody(payload);
+  if (inlineHtml) return inlineHtml;
+
+  function findHtmlAttachment(part: any): string {
+    if (!part) return "";
+    if (part.mimeType === "text/html" && part.body?.attachmentId) return part.body.attachmentId;
+    for (const child of part.parts || []) {
+      const attachmentId = findHtmlAttachment(child);
+      if (attachmentId) return attachmentId;
+    }
+    return "";
+  }
+
+  const attachmentId = findHtmlAttachment(payload);
+  if (!attachmentId) return "";
+
+  const attachment = await gmail.users.messages.attachments.get({
+    userId: "me",
+    messageId,
+    id: attachmentId,
+  });
+  return attachment.data.data
+    ? Buffer.from(attachment.data.data, "base64url").toString("utf-8")
+    : "";
+}
+
 export async function GET(req: NextRequest, { params }: { params: { threadId: string } }) {
   try {
     const { threadId } = params;
@@ -133,13 +184,16 @@ export async function GET(req: NextRequest, { params }: { params: { threadId: st
     const alinaToken = settings?.alina_refresh_token || "";
 
     if (!alinaToken) {
-      return NextResponse.json({ error: "Alina account not configured" }, { status: 503 });
+      return NextResponse.json(
+        { error: "Alina account not configured" },
+        { status: 503, headers: NO_STORE_HEADERS }
+      );
     }
 
     const gmail = getAlinaGmailClient(alinaToken);
     const res = await gmail.users.threads.get({ userId: "me", id: threadId, format: "FULL" as "FULL" });
 
-    const messages = (res.data.messages || []).map((msg) => {
+    const messages = await Promise.all((res.data.messages || []).map(async (msg) => {
       const headers = (msg.payload?.headers || []) as { name: string; value: string }[];
       const from = getHeader(headers, "From");
       const messageId = getHeader(headers, "Message-ID");
@@ -147,6 +201,7 @@ export async function GET(req: NextRequest, { params }: { params: { threadId: st
       const subject = sanitize(getHeader(headers, "Subject"));
       const date = msg.internalDate ? new Date(parseInt(msg.internalDate)).toISOString() : "";
       const rawBody = extractBody(msg.payload);
+      const rawHtml = await extractCompleteHtmlBody(msg.payload, msg.id!, gmail);
       return {
         id: msg.id,
         messageId,
@@ -155,8 +210,9 @@ export async function GET(req: NextRequest, { params }: { params: { threadId: st
         sender: maskSender(from, alinaEmail),
         date,
         body: sanitize(rawBody),
+        bodyHtml: rawHtml ? sanitizeEmailHtml(rawHtml) : "",
       };
-    });
+    }));
 
     try {
       await gmail.users.threads.modify({
@@ -167,9 +223,15 @@ export async function GET(req: NextRequest, { params }: { params: { threadId: st
     } catch { /* ignore */ }
 
     const subject = sanitize(messages[0]?.subject || "(no subject)");
-    return NextResponse.json({ threadId, subject, messages });
+    return NextResponse.json(
+      { threadId, subject, messages },
+      { headers: NO_STORE_HEADERS }
+    );
   } catch (err: any) {
     console.error("Alina thread detail error:", err);
-    return NextResponse.json({ error: err.message || "Internal error" }, { status: 500 });
+    return NextResponse.json(
+      { error: err.message || "Internal error" },
+      { status: 500, headers: NO_STORE_HEADERS }
+    );
   }
 }

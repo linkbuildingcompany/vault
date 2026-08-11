@@ -33,6 +33,7 @@ interface Message {
   sender: string;
   date: string;
   body: string;
+  bodyHtml?: string;
 }
 
 interface ThreadDetail {
@@ -105,6 +106,35 @@ function statusChip(t: ThreadSummary) {
   );
 }
 
+function EmailBody({ message }: { message: Message }) {
+  const frameRef = useRef<HTMLIFrameElement>(null);
+
+  if (!message.bodyHtml) {
+    return <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">{message.body}</p>;
+  }
+
+  const document = `<!doctype html><html><head><base target="_blank"><meta name="viewport" content="width=device-width, initial-scale=1"><style>html,body{margin:0;padding:0;background:transparent;color:#111827;font-family:Arial,sans-serif;font-size:14px;line-height:1.55;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}a{color:#2563eb}</style></head><body>${message.bodyHtml}</body></html>`;
+
+  return (
+    <iframe
+      ref={frameRef}
+      title={`Email content ${message.id}`}
+      sandbox="allow-same-origin allow-popups"
+      srcDoc={document}
+      className="w-full border-0 bg-transparent"
+      style={{ minHeight: 120 }}
+      onLoad={() => {
+        try {
+          const frame = frameRef.current;
+          if (frame?.contentDocument?.documentElement) {
+            frame.style.height = `${Math.min(Math.max(frame.contentDocument.documentElement.scrollHeight + 8, 120), 1600)}px`;
+          }
+        } catch { /* sandboxed fallback keeps the minimum height */ }
+      }}
+    />
+  );
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function AlinaPage() {
@@ -138,20 +168,28 @@ export default function AlinaPage() {
   const [composeSuccess, setComposeSuccess] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const threadRequestRef = useRef(0);
 
   // ── Fetch threads ──────────────────────────────────────────────────────────
 
-  const fetchThreads = useCallback(async (tab: TabType, q: string, replace = true) => {
+  const fetchThreads = useCallback(async (tab: TabType, q: string, replace = true, pageToken?: string) => {
+    const requestId = ++threadRequestRef.current;
     setLoadingThreads(true);
     setThreadsError("");
     try {
       const token = await getToken();
-      const params = new URLSearchParams({ tab, ...(q ? { search: q } : {}) });
+      const params = new URLSearchParams({
+        tab,
+        ...(q ? { search: q } : {}),
+        ...(pageToken ? { pageToken } : {}),
+      });
       const res = await fetch(`/api/vault/alina/threads?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to load");
+      if (requestId !== threadRequestRef.current) return;
       if (data.configured === false) {
         setConfigured(false);
         setThreads([]);
@@ -161,9 +199,9 @@ export default function AlinaPage() {
         setNextPageToken(data.nextPageToken || null);
       }
     } catch (e: any) {
-      setThreadsError(e.message);
+      if (requestId === threadRequestRef.current) setThreadsError(e.message);
     } finally {
-      setLoadingThreads(false);
+      if (requestId === threadRequestRef.current) setLoadingThreads(false);
     }
   }, []);
 
@@ -438,7 +476,7 @@ export default function AlinaPage() {
                 ))}
                 {nextPageToken && (
                   <button
-                    onClick={() => fetchThreads(activeTab, search, false)}
+                    onClick={() => fetchThreads(activeTab, search, false, nextPageToken)}
                     disabled={loadingThreads}
                     className="w-full py-3 text-xs text-purple-600 hover:text-purple-800 font-medium transition-colors"
                   >
@@ -498,14 +536,14 @@ export default function AlinaPage() {
                     key={msg.id}
                     className={`flex ${msg.sender === "You" ? "justify-end" : "justify-start"}`}
                   >
-                    <div className={`max-w-[75%] rounded-2xl px-4 py-3 ${senderBubbleClass(msg.sender)}`}>
+                    <div className={`${msg.bodyHtml ? "w-full max-w-4xl" : "max-w-[75%]"} rounded-2xl px-4 py-3 ${senderBubbleClass(msg.sender)}`}>
                       <div className="flex items-center gap-2 mb-1">
                         <span className={`text-[11px] font-semibold ${senderLabelClass(msg.sender)}`}>
                           {msg.sender}
                         </span>
                         <span className="text-[10px] text-gray-400">{fmtDateFull(msg.date)}</span>
                       </div>
-                      <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.body}</p>
+                      <EmailBody message={msg} />
                     </div>
                   </div>
                 ))}

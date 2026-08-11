@@ -103,8 +103,7 @@ export function buildEmail(opts: {
     ``,
     opts.body,
   ];
-  return lines.join("
-");
+  return lines.join("\r\n");
 }
 
 /** Build a multipart/mixed email with optional file attachments */
@@ -138,8 +137,7 @@ export function buildEmailWithAttachments(opts: {
     ...(opts.inReplyTo ? [`In-Reply-To: ${opts.inReplyTo}`] : []),
     ...(opts.references ? [`References: ${opts.references}`] : []),
     ``,
-  ].join("
-");
+  ].join("\r\n");
 
   const textPart = [
     `--${boundary}`,
@@ -147,14 +145,12 @@ export function buildEmailWithAttachments(opts: {
     `Content-Transfer-Encoding: 7bit`,
     ``,
     opts.body,
-  ].join("
-");
+  ].join("\r\n");
 
   const attachParts = opts.attachments
     .map((att) => {
       // wrap base64 at 76 chars per MIME spec
-      const wrapped = att.data.match(/.{1,76}/g)?.join("
-") ?? att.data;
+      const wrapped = att.data.match(/.{1,76}/g)?.join("\r\n") ?? att.data;
       return [
         `--${boundary}`,
         `Content-Type: ${att.mimeType}; name="${att.filename}"`,
@@ -162,12 +158,9 @@ export function buildEmailWithAttachments(opts: {
         `Content-Disposition: attachment; filename="${att.filename}"`,
         ``,
         wrapped,
-      ].join("
-");
+      ].join("\r\n");
     })
-    .join("
-");
+    .join("\r\n");
 
-  return [header, textPart, attachParts, `--${boundary}--`].join("
-");
+  return [header, textPart, attachParts, `--${boundary}--`].join("\r\n");
 }

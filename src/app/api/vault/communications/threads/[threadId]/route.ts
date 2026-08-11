@@ -29,7 +29,7 @@ function maskSender(
 }
 
 function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\]/g, "\$&");
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 const SIGNOFF_PHRASES = [
@@ -40,14 +40,11 @@ const SIGNOFF_PHRASES = [
 ];
 
 function stripSignature(text: string): string {
-  const lines = text.split(/
-?
-/);
+  const lines = text.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     const trimmed = lines[i].trim().toLowerCase();
     if (SIGNOFF_PHRASES.some((s) => trimmed === s || trimmed.startsWith(s + " "))) {
-      return lines.slice(0, i).join("
-").trimEnd();
+      return lines.slice(0, i).join("\n").trimEnd();
     }
   }
   return text;
@@ -57,9 +54,9 @@ function sanitize(text: string): string {
   if (!text) return text;
 
   // 0. Strip all images
-  text = text.replace(/<img[^>]*\/?>/gi, "");
-  text = text.replace(/<picture[^>]*>[\s\S]*?<\/picture>/gi, "");
-  text = text.replace(/<figure[^>]*>[\s\S]*?<\/figure>/gi, "");
+  text = text.replace(/<img\b[^>]*\/?>/gi, "");
+  text = text.replace(/<picture\b[^>]*>[\s\S]*?<\/picture>/gi, "");
+  text = text.replace(/<figure\b[^>]*>[\s\S]*?<\/figure>/gi, "");
   text = text.replace(/src=["']cid:[^"']*["']/gi, 'src=""');
   text = text.replace(/data:image\/[^;]+;base64,[A-Za-z0-9+/=\s]+/gi, "");
   text = text.replace(/\[cid:[^\]]*\]/gi, "");
@@ -112,15 +109,15 @@ function sanitize(text: string): string {
 
   // 4. FatJoe brand + domain
   text = text.replace(/fat\s*joe/gi, "[redacted]");
-  text = text.replace(/fatjoe\.com/gi, "[redacted]");
+  text = text.replace(/\bfatjoe\.com\b/gi, "[redacted]");
 
   // 5. linkbuilding.company
   text = text.replace(/[\w.+-]+@linkbuilding\.company/gi, "[redacted]");
-  text = text.replace(/linkbuilding\.company/gi, "[redacted]");
+  text = text.replace(/\blinkbuilding\.company\b/gi, "[redacted]");
   text = text.replace(/link\s+building\s+company/gi, "[redacted]");
 
   // 6. Phone numbers
-  text = text.replace(/(\+?[\d 	\-().]{7,20}(?:[ 	]*(ext|x)\.?[ 	]*\d{1,6})?)/g, (match) => {
+  text = text.replace(/(\+?[\d \t\-().]{7,20}(?:[ \t]*(ext|x)\.?[ \t]*\d{1,6})?)/g, (match) => {
     const digits = match.replace(/\D/g, "");
     if (digits.length >= 7 && digits.length <= 15) return "[redacted]";
     return match;
@@ -130,10 +127,10 @@ function sanitize(text: string): string {
   text = text.replace(/^\s*(website|web|www)\s*:.*$/gim, "[redacted]");
 
   // 8. Lines with fatjoe.com
-  text = text.replace(/^.*fatjoe\.com.*$/gim, "[redacted]");
+  text = text.replace(/^.*\bfatjoe\.com\b.*$/gim, "[redacted]");
 
   // 9. Physical address lines
-  text = text.replace(/^.*(p\.?o\.?\s*box|suite|floor|unit|road|street|ave|avenue|lane|place|drive|[A-Z]{1,2}\d[\d\w]?\s*\d[A-Z]{2}|\d{5}(-\d{4})?).*$/gim, "[redacted]");
+  text = text.replace(/^.*(p\.?o\.?\s*box|\bsuite\b|\bfloor\b|\bunit\b|\broad\b|\bstreet\b|\bave\b|\bavenue\b|\blane\b|\bplace\b|\bdrive\b|[A-Z]{1,2}\d[\d\w]?\s*\d[A-Z]{2}|\b\d{5}(-\d{4})?\b).*$/gim, "[redacted]");
 
   // 10. Company registration lines
   text = text.replace(/^.*(company\s*(no|number|reg|registration)|reg(istered)?\s*(no|number)).*$/gim, "[redacted]");
@@ -165,7 +162,7 @@ function sanitize(text: string): string {
     "link building", "pr specialist", "digital marketing", "operations",
   ];
   const titlePattern = new RegExp(
-    `\b(${titleKeywords.map(escapeRegex).join("|")})\b`,
+    `\\b(${titleKeywords.map(escapeRegex).join("|")})\\b`,
     "i"
   );
   text = text
@@ -189,9 +186,7 @@ function sanitize(text: string): string {
     .join("");
 
   // 15. Collapse multiple [redacted]
-  text = text.replace(/(\[redacted\]\s*
-){2,}/g, "[redacted]
-");
+  text = text.replace(/(\[redacted\]\s*\n){2,}/g, "[redacted]\n");
   text = text.replace(/(\[redacted\]\s*){2,}/g, "[redacted] ");
 
   return text.trim();
@@ -205,10 +200,10 @@ function sanitizeEmailHtml(html: string): string {
   let safe = sanitize(html);
 
   // Email HTML is displayed in a sandboxed iframe; remove active/embedded content too.
-  safe = safe.replace(/<(script|iframe|object|embed|form|input|button|textarea|select|meta|link|base)[^>]*>[\s\S]*?<\/>/gi, "");
-  safe = safe.replace(/<(script|iframe|object|embed|form|input|button|textarea|select|meta|link|base)[^>]*\/?>/gi, "");
+  safe = safe.replace(/<(script|iframe|object|embed|form|input|button|textarea|select|meta|link|base)\b[^>]*>[\s\S]*?<\/\1>/gi, "");
+  safe = safe.replace(/<(script|iframe|object|embed|form|input|button|textarea|select|meta|link|base)\b[^>]*\/?>/gi, "");
   safe = safe.replace(/\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "");
-  safe = safe.replace(/\s+(href|src)\s*=\s*(["'])\s*javascript:[\s\S]*?/gi, "");
+  safe = safe.replace(/\s+(href|src)\s*=\s*(["'])\s*javascript:[\s\S]*?\2/gi, "");
   safe = safe.replace(/\s+srcdoc\s*=\s*("[^"]*"|'[^']*')/gi, "");
 
   return safe;
@@ -216,11 +211,9 @@ function sanitizeEmailHtml(html: string): string {
 
 function htmlToVisibleText(html: string): string {
   return html
-    .replace(/<(script|style)[^>]*>[\s\S]*?<\/>/gi, " ")
-    .replace(/<br\s*\/?>/gi, "
-")
-    .replace(/<\/p\s*>|<\/div\s*>|<\/li\s*>/gi, "
-")
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p\s*>|<\/div\s*>|<\/li\s*>/gi, "\n")
     .replace(/<[^>]*>/g, " ")
     .replace(/&nbsp;|&#160;/gi, " ")
     .replace(/&amp;/gi, "&")

@@ -31,7 +31,7 @@ function maskSender(from: string, alinaEmail: string, tab: string): string {
 }
 
 function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return s.replace(/[.*+?^${}()|[\]\]/g, "\$&");
 }
 
 const SIGNOFF_PHRASES = [
@@ -42,11 +42,14 @@ const SIGNOFF_PHRASES = [
 ];
 
 function stripSignature(text: string): string {
-  const lines = text.split(/\r?\n/);
+  const lines = text.split(/
+?
+/);
   for (let i = 0; i < lines.length; i++) {
     const trimmed = lines[i].trim().toLowerCase();
     if (SIGNOFF_PHRASES.some((s) => trimmed === s || trimmed.startsWith(s + " "))) {
-      return lines.slice(0, i).join("\n").trimEnd();
+      return lines.slice(0, i).join("
+").trimEnd();
     }
   }
   return text;
@@ -54,9 +57,9 @@ function stripSignature(text: string): string {
 
 function sanitize(text: string): string {
   if (!text) return text;
-  text = text.replace(/<img\b[^>]*\/?>/gi, "");
-  text = text.replace(/<picture\b[^>]*>[\s\S]*?<\/picture>/gi, "");
-  text = text.replace(/<figure\b[^>]*>[\s\S]*?<\/figure>/gi, "");
+  text = text.replace(/<img[^>]*\/?>/gi, "");
+  text = text.replace(/<picture[^>]*>[\s\S]*?<\/picture>/gi, "");
+  text = text.replace(/<figure[^>]*>[\s\S]*?<\/figure>/gi, "");
   text = text.replace(/src=["']cid:[^"']*["']/gi, 'src=""');
   text = text.replace(/data:image\/[^;]+;base64,[A-Za-z0-9+/=\s]+/gi, "");
   text = text.replace(/\[cid:[^\]]*\]/gi, "");
@@ -100,9 +103,9 @@ function sanitize(text: string): string {
   }
 
   text = text.replace(/fat\s*joe/gi, "[redacted]");
-  text = text.replace(/\bfatjoe\.com\b/gi, "[redacted]");
+  text = text.replace(/fatjoe\.com/gi, "[redacted]");
   text = text.replace(/[\w.+-]+@linkbuilding\.company/gi, "[redacted]");
-  text = text.replace(/\blinkbuilding\.company\b/gi, "[redacted]");
+  text = text.replace(/linkbuilding\.company/gi, "[redacted]");
   text = text.replace(/link\s+building\s+company/gi, "[redacted]");
 
   text = text.replace(/(\+?[\d\s\-().]{7,20}(?:\s*(ext|x)\.?\s*\d{1,6})?)/g, (match) => {
@@ -112,7 +115,9 @@ function sanitize(text: string): string {
   });
 
   text = text.replace(/^\s*(website|web|www)\s*:.*$/gim, "[redacted]");
-  text = text.replace(/(\[redacted\]\s*\n){2,}/g, "[redacted]\n");
+  text = text.replace(/(\[redacted\]\s*
+){2,}/g, "[redacted]
+");
   text = text.replace(/(\[redacted\]\s*){2,}/g, "[redacted] ");
 
   return text.trim();
@@ -143,7 +148,9 @@ export async function GET(req: NextRequest) {
     let q =
       tab === "orders"
         ? "from:publishing@fatjoe.com"
-        : "from:ravi.soni.4254@gmail.com";
+        : tab === "partners"
+          ? "from:ravi.soni.4254@gmail.com"
+          : "in:inbox";
     if (search) q += ` ${search}`;
 
     const listRes = await gmail.users.threads.list({

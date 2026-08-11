@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 import {
   Send, RefreshCw, ChevronLeft, Search, X, Loader2,
   Mail, AlertCircle, MessageSquare, Clock, Bell,
-  Settings, Users, ShoppingBag,
+  Settings, Users, ShoppingBag, Inbox, Plus,
 } from "lucide-react";
 
 async function getToken(): Promise<string> {
@@ -41,7 +41,7 @@ interface ThreadDetail {
   messages: Message[];
 }
 
-type TabType = "partners" | "orders";
+type TabType = "inbox" | "partners" | "orders";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -110,7 +110,7 @@ function statusChip(t: ThreadSummary) {
 export default function AlinaPage() {
   const { role, loading: authLoading } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<TabType>("partners");
+  const [activeTab, setActiveTab] = useState<TabType>("inbox");
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [loadingThreads, setLoadingThreads] = useState(false);
   const [threadsError, setThreadsError] = useState("");
@@ -127,6 +127,15 @@ export default function AlinaPage() {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState("");
   const [sendSuccess, setSendSuccess] = useState(false);
+
+  const [showCompose, setShowCompose] = useState(false);
+  const [composeTo, setComposeTo] = useState("");
+  const [composeCc, setComposeCc] = useState("");
+  const [composeSubject, setComposeSubject] = useState("");
+  const [composeBody, setComposeBody] = useState("");
+  const [composeSending, setComposeSending] = useState(false);
+  const [composeError, setComposeError] = useState("");
+  const [composeSuccess, setComposeSuccess] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -225,6 +234,47 @@ export default function AlinaPage() {
     }
   };
 
+
+  // ── Compose a new email ───────────────────────────────────────────────────
+
+  const handleCompose = async () => {
+    if (!composeTo.trim() || !composeSubject.trim() || !composeBody.trim()) return;
+    setComposeSending(true);
+    setComposeError("");
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/vault/alina/send", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          to: composeTo,
+          cc: composeCc,
+          subject: composeSubject,
+          body: composeBody,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to send");
+      setComposeSuccess(true);
+      setTimeout(() => {
+        setShowCompose(false);
+        setComposeTo("");
+        setComposeCc("");
+        setComposeSubject("");
+        setComposeBody("");
+        setComposeSuccess(false);
+        fetchThreads(activeTab, search);
+      }, 1000);
+    } catch (e: any) {
+      setComposeError(e.message);
+    } finally {
+      setComposeSending(false);
+    }
+  };
+
   // ── Search ─────────────────────────────────────────────────────────────────
 
   const handleSearch = (e: React.FormEvent) => {
@@ -262,6 +312,13 @@ export default function AlinaPage() {
           </div>
           <div className="flex items-center gap-2">
             <button
+              onClick={() => { setComposeError(""); setComposeSuccess(false); setShowCompose(true); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-purple-600 text-white hover:bg-purple-700 rounded-lg transition-colors"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Compose
+            </button>
+            <button
               onClick={() => fetchThreads(activeTab, search)}
               disabled={loadingThreads}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
@@ -278,7 +335,7 @@ export default function AlinaPage() {
         <div className="w-80 flex-shrink-0 border-r bg-white flex flex-col">
           {/* Tabs */}
           <div className="flex border-b px-3 pt-3 gap-1">
-            {(["partners", "orders"] as const).map((tab) => (
+            {(["inbox", "partners", "orders"] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -288,8 +345,8 @@ export default function AlinaPage() {
                     : "text-gray-500 hover:bg-gray-100"
                 }`}
               >
-                {tab === "partners" ? <Users className="h-3.5 w-3.5" /> : <ShoppingBag className="h-3.5 w-3.5" />}
-                {tab === "partners" ? "Partners" : "Orders"}
+                {tab === "inbox" ? <Inbox className="h-3.5 w-3.5" /> : tab === "partners" ? <Users className="h-3.5 w-3.5" /> : <ShoppingBag className="h-3.5 w-3.5" />}
+                {tab === "inbox" ? "Inbox" : tab === "partners" ? "Partners" : "Orders"}
               </button>
             ))}
           </div>
@@ -402,7 +459,7 @@ export default function AlinaPage() {
               </div>
               <p className="text-sm font-medium text-gray-500">Select a conversation</p>
               <p className="text-xs text-gray-400">
-                {activeTab === "partners" ? "Partner emails will appear here" : "FatJoe orders will appear here"}
+                {activeTab === "inbox" ? "All current inbox emails will appear here" : activeTab === "partners" ? "Partner emails will appear here" : "FatJoe orders will appear here"}
               </p>
             </div>
           ) : loadingThread ? (
@@ -502,6 +559,80 @@ export default function AlinaPage() {
           )}
         </div>
       </div>
+
+      {showCompose && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-xl rounded-xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b px-5 py-4">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">New email</h2>
+                <p className="text-xs text-gray-400">Send from alina@aiimpactonservicejobs.com</p>
+              </div>
+              <button
+                onClick={() => !composeSending && setShowCompose(false)}
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            {composeSuccess ? (
+              <div className="flex items-center gap-2 px-5 py-8 text-sm text-green-700">
+                <Send className="h-4 w-4" /> Email sent from Alina!
+              </div>
+            ) : (
+              <div className="space-y-3 p-5">
+                <input
+                  type="text"
+                  value={composeTo}
+                  onChange={(e) => setComposeTo(e.target.value)}
+                  placeholder="To (use commas for multiple recipients)"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                />
+                <input
+                  type="text"
+                  value={composeCc}
+                  onChange={(e) => setComposeCc(e.target.value)}
+                  placeholder="Cc (optional)"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                />
+                <input
+                  type="text"
+                  value={composeSubject}
+                  onChange={(e) => setComposeSubject(e.target.value)}
+                  placeholder="Subject"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                />
+                <textarea
+                  value={composeBody}
+                  onChange={(e) => setComposeBody(e.target.value)}
+                  placeholder="Write your message…"
+                  rows={10}
+                  className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleCompose();
+                  }}
+                />
+                {composeError && (
+                  <div className="flex items-center gap-2 text-xs text-red-600">
+                    <AlertCircle className="h-3.5 w-3.5" /> {composeError}
+                  </div>
+                )}
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-xs text-gray-400">⌘+Enter to send</span>
+                  <button
+                    onClick={handleCompose}
+                    disabled={composeSending || !composeTo.trim() || !composeSubject.trim() || !composeBody.trim()}
+                    className="flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {composeSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    {composeSending ? "Sending…" : "Send email"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

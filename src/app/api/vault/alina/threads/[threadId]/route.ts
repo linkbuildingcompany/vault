@@ -30,7 +30,7 @@ function getHeader(headers: { name: string; value: string }[], name: string): st
 function maskSender(from: string, alinaEmail: string): string {
   const lower = from.toLowerCase();
   if (alinaEmail && lower.includes(alinaEmail.toLowerCase())) return "You";
-  if (lower.includes("@fatjoe.com")) return "FatJoe Team";
+  if (lower.includes("@fatjoe.com")) return "Partner";
   return "Partner";
 }
 
